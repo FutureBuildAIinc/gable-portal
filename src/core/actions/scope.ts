@@ -270,9 +270,18 @@ export function applyTemplate(
 
 /**
  * Re-prices every line against the current ERP rules. Used after a dealer
- * pricing change and by the M4 simulator when a quote comes back.
+ * pricing change.
+ *
+ * Gated on `edit-scope` like every other mutation here: it rewrites the unit
+ * price on lines the contractor is about to commit money to, and this layer is
+ * the single gate for the buttons and the assistant alike. The simulator does
+ * NOT come through here — the quote desk writes its prices through
+ * `stores.patchScopeItem`, so gating this cannot stall the supplier side.
  */
 export function repriceOrder(orderId: string): Result<number> {
+  const gate = requireCapability('edit-scope');
+  if (!gate.ok) return gate;
+
   const editable = assertEditable(orderId);
   if (!editable.ok) return editable;
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
 // SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
 import type { EntityId } from '../lib/ids';
-import { type Cents, applyPercent } from '../lib/money';
+import { type Cents, applyPercent, multiplyCents } from '../lib/money';
 import type { IsoDateTime } from '../lib/time';
 import type { ContractorBranding } from './account';
 import type { Uom } from './catalog';
@@ -137,7 +137,23 @@ export interface QuoteTotals {
 }
 
 export function laborTotal(line: LaborLine): Cents {
-  return line.rateType === 'flat' ? line.rate : Math.round(line.rate * (line.hours ?? 0));
+  return line.rateType === 'flat' ? line.rate : multiplyCents(line.rate, line.hours ?? 0);
+}
+
+/** One material line's extension. */
+export function lineExtended(line: Pick<CustomerQuoteLine, 'unitCost' | 'qty'>): Cents {
+  return multiplyCents(line.unitCost, line.qty);
+}
+
+/**
+ * Cost plus the contractor's markup — the number the customer is shown.
+ *
+ * Exported because the proposal page also prints a marked-up subtotal for one
+ * SECTION of the lines. Rounding the markup there any differently would leave
+ * the sections not adding up to the total on the same screen.
+ */
+export function withMarkup(cost: Cents, markupPercent: number): Cents {
+  return cost + applyPercent(cost, markupPercent);
 }
 
 export function computeQuoteTotals(quote: {
@@ -146,12 +162,9 @@ export function computeQuoteTotals(quote: {
   laborLines: readonly LaborLine[];
   overheadLines: readonly OverheadLine[];
 }): QuoteTotals {
-  const materialCost = quote.lines.reduce(
-    (sum, line) => sum + Math.round(line.unitCost * line.qty),
-    0,
-  );
-  const markup = applyPercent(materialCost, quote.markupPercent);
-  const materials = materialCost + markup;
+  const materialCost = quote.lines.reduce((sum, line) => sum + lineExtended(line), 0);
+  const materials = withMarkup(materialCost, quote.markupPercent);
+  const markup = materials - materialCost;
   const labor = quote.laborLines.reduce((sum, line) => sum + laborTotal(line), 0);
 
   // Percentage overheads are taken on marked-up materials plus labor, which is

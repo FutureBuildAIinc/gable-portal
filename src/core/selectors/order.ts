@@ -4,7 +4,7 @@ import type { PriceQuote, Product, VolumeBreak } from '../domain/catalog';
 import type { Order, Project, ScopeItem } from '../domain/project';
 import { itemExtended } from '../domain/project';
 import { type OrderTotals, orderTotals } from '../domain/totals';
-import type { Cents } from '../lib/money';
+import { type Cents, multiplyCents } from '../lib/money';
 import { daysBetween } from '../lib/time';
 
 /**
@@ -31,8 +31,18 @@ export interface ScopeLine {
 export interface BreakOpportunity extends VolumeBreak {
   /** How many more units are needed to qualify. */
   addQty: number;
-  /** What the line would save at the break price, net of the extra units. */
+  /**
+   * What buying up to the break saves on this line overall — 0 unless the
+   * break quantity at the break price genuinely costs LESS than the current
+   * quantity at the current price. Never negative.
+   */
   savesCents: Cents;
+  /**
+   * What buying up to the break costs on this line overall — 0 when it is a
+   * saving. Never negative. This is the ordinary case: the unit price drops
+   * and the total still goes up.
+   */
+  addCostCents: Cents;
 }
 
 export interface OrderDetail {
@@ -71,13 +81,23 @@ function breakOpportunityFor(
   // Compare like for like: what the contractor pays now for their quantity,
   // against what they'd pay for the FULL break quantity at the break price.
   // If buying more actually costs less overall, that is worth saying out loud.
-  const costNow = item.unitPrice * item.qty;
-  const costAtBreak = next.unitPrice * next.minQty;
+  const costNow = multiplyCents(item.unitPrice, item.qty);
+  const costAtBreak = multiplyCents(next.unitPrice, next.minQty);
+  const delta = costNow - costAtBreak;
 
+  // Two halves of the same trade, each under its own name. Buying up to a
+  // break lowers the UNIT price, so it usually raises the TOTAL — reporting
+  // that as a negative "saving" is how a screen ends up telling a contractor
+  // they save -$28.00. So `savesCents` only ever holds a real saving (the
+  // break quantity beating the current total outright), and the ordinary
+  // case — pay more, get a better rate — is carried by `addCostCents`.
+  // Exactly one of the two is non-zero. `orderTotals.savings` clamps the same
+  // way for the same reason.
   return {
     ...next,
     addQty,
-    savesCents: Math.round(costNow - costAtBreak),
+    savesCents: Math.max(0, delta),
+    addCostCents: Math.max(0, -delta),
   };
 }
 

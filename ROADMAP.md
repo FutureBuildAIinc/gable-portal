@@ -22,7 +22,7 @@ Where the two disagree, this file governs.
 production surface area.**
 
 Both halves of that are true and neither should be discounted. The engineering
-is real: 449 tests (446 passing, 3 deliberately-failing and documented in §6),
+is real: 451 tests, all passing (see §6 for the three that used to be pinned),
 `strict` TypeScript with `noUncheckedIndexedAccess` and
 `exactOptionalPropertyTypes`, an architectural boundary enforced by a test
 rather than a convention, five browser-driven audit gates, and a domain layer
@@ -121,33 +121,46 @@ so a missing grant looks exactly like "nothing happened". The file documents
 what a maintainer must do before opening the repository to outside
 contributors.
 
-### 6. Two defects found while writing tests, asserted and marked failing
+### 6. Two defects found while writing tests — RESOLVED
 
-Both are pinned by tests in
-`src/core/selectors/__tests__/order-money.test.ts` and
-`src/core/actions/__tests__/orders.test.ts`, written as `it.fails(...)` with the
-*correct* behaviour asserted, so fixing the code turns them green rather than
-requiring the test to be rewritten.
+Both were pinned by `it.fails(...)` tests asserting the *correct* behaviour, so
+the fixes turned those tests green rather than rewriting them. The pins are
+gone; the tests remain.
 
-- **`breakOpportunity.savesCents` can be negative.** In
-  `src/core/selectors/order.ts`, `savesCents` is
+- **`breakOpportunity.savesCents` could be negative.** In
+  `src/core/selectors/order.ts`, `savesCents` was
   `costNow - (breakUnitPrice × breakMinQty)`. Buying up to a volume break
   normally costs more in total even though the unit price drops, so a field
-  named "saves" routinely holds a negative number. No UI renders it today, which
-  is the only reason this has not surfaced in front of a contractor — but it is
-  a public field on a money-facing selector, and the comment directly above it
-  describes the opposite intent. The fix is a decision, not a typo: either
-  rename it to a signed delta, or clamp and omit the opportunity when it is not
-  actually a saving.
-- **`reorderInStage()` has no permission gate and reports a `sortOrder` it did
+  named "saves" routinely held a negative number — "you save -$28.00". No UI
+  rendered it, which is the only reason it never reached a contractor.
+  **Fixed** by splitting the trade into two fields that each match their name:
+  `savesCents` is clamped at zero and holds a saving only when the break
+  quantity genuinely beats the current total (the same convention
+  `orderTotals.savings` already used), and the ordinary case — lower unit
+  price, higher bill — is carried by the new `addCostCents`. Exactly one of the
+  two is non-zero. The opportunity is still returned either way, because
+  "+20 units → $4.28/unit" is worth surfacing even when the total goes up.
+- **`reorderInStage()` had no permission gate and reported a `sortOrder` it did
   not persist.** Every other mutation in `src/core/actions/orders.ts` opens with
-  `requireCapability(...)`; this one does not, so a Field-role user is refused a
-  stage move and allowed a reorder. It also returns
+  `requireCapability(...)`; this one did not, so a Field-role user was refused a
+  stage move and allowed a reorder. It also returned
   `{ ...order, sortOrder: newSortOrder }` while writing the post-splice index,
-  so an out-of-range argument makes the returned object disagree with the store.
-  The function currently has **no callers** — board drag-and-drop goes through
-  `moveOrderToStage` — which is why neither has bitten. It is exported from the
-  core API surface, so it will.
+  so an out-of-range argument made the returned object disagree with the store.
+  **Fixed**: gated on `edit-scope` like its siblings, and the requested position
+  is clamped into the column once and used for both the write and the return
+  value. The function still has no callers — board drag-and-drop goes through
+  `moveOrderToStage` — but it is exported from the core API surface.
+
+`repriceOrder()` in `src/core/actions/scope.ts` was found to be in the same
+class during the follow-up audit — exported, mutating, ungated, zero callers —
+and is now gated on `edit-scope` alongside the rest of that file. The simulator
+never came through it (the quote desk writes prices via
+`stores.patchScopeItem`), so gating it cannot stall the supplier side. Every
+other exported mutation under `src/core/actions/` carries a gate; the only
+ungated ones left are deliberate and documented in place:
+`systemInvoiceOrder` (supplier-driven), `switchActiveMember` (the switcher *is*
+the login story in this demo), and the three customer-side quote actions reached
+through a share link, where the actor is the homeowner and not a team member.
 
 ### 7. The five real gates are not in CI
 
@@ -218,33 +231,32 @@ Nothing here has a date. This is sequence, not schedule.
    re-blocking, lifecycle events. This is the highest-leverage step available
    *before* the seam decision, because it makes the simulator an asset rather
    than a prop.
-3. **Fix the two defects in §6**, or consciously decide not to and say why.
-4. **Replace `public/images/brands/`.**
+3. **Replace `public/images/brands/`.**
 
 ### Next
 
-5. **A server.** Nothing on this list past here is meaningful without one:
+4. **A server.** Nothing on this list past here is meaningful without one:
    identity, persistence, and an audit trail. This is where the portal stops
    being a prototype.
-6. **The first real adapter.** BisTrack has the largest independent footprint,
+5. **The first real adapter.** BisTrack has the largest independent footprint,
    so it is the obvious first target — with a design-partner dealer, not
    speculatively.
-7. **Web components.** The stated direction is that a dealer's web person drops
+6. **Web components.** The stated direction is that a dealer's web person drops
    the board into their own site. `src/core/` being framework-free is what makes
    this a rewrite of `src/ui/` rather than of everything, and that boundary is
    already enforced and tested. Nothing else has started.
 
 ### Later
 
-8. **Capture as the front door** — camera and voice into priced Plan-stage
+7. **Capture as the front door** — camera and voice into priced Plan-stage
    lines, offline-first queueing.
-9. **Deposit at signature** — the customer-quote acceptance ceremony already
+8. **Deposit at signature** — the customer-quote acceptance ceremony already
    freezes scope, price, and consent; taking a deposit at that moment is the
    nearest real money moment.
-10. **The price-lock book** — `priceExpiresAt` already exists on every
-    desk-quoted line and the domain already treats a lapsed price as unpriced.
-    Managing those as one queue across every job is a small feature on top of
-    machinery that is already there.
+9. **The price-lock book** — `priceExpiresAt` already exists on every
+   desk-quoted line and the domain already treats a lapsed price as unpriced.
+   Managing those as one queue across every job is a small feature on top of
+   machinery that is already there.
 
 ### Explicitly not planned
 

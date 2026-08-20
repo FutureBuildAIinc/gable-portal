@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
 import { dealerConfig } from '../config/runtime';
 import type { EntityId } from '../lib/ids';
-import type { Cents } from '../lib/money';
+import { type Cents, applyPercent } from '../lib/money';
 import type { IsoDateTime } from '../lib/time';
 
 /**
@@ -56,7 +56,7 @@ export function cardFeePercent(): number {
 }
 
 export function feeFor(method: PaymentMethod, amount: Cents): Cents {
-  return method.kind === 'card' ? Math.round(amount * (cardFeePercent() / 100)) : 0;
+  return method.kind === 'card' ? applyPercent(amount, cardFeePercent()) : 0;
 }
 
 export type AgingBucket = 'current' | '1-30' | '31-60' | '60+';

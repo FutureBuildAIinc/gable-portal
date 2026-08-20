@@ -246,28 +246,12 @@ describe('volume break opportunities', () => {
   });
 
   /**
-   * KNOWN DEFECT — see ROADMAP.md §6.
-   *
-   * `savesCents` is computed as `costNow - (breakUnitPrice * breakMinQty)`:
-   * what the contractor pays for THEIR quantity, minus what they would pay for
-   * the FULL break quantity. Buying up to a break normally costs more in total
-   * even though the unit price falls, so a field named "saves" routinely holds
-   * a negative number.
-   *
-   * Here: 80 @ $5.00 = $400.00 now; 100 @ $4.28 = $428.00 at the break. The
-   * field reports -2800, i.e. "you save -$28.00".
-   *
-   * Nothing renders it today (`LineItemRow.tsx` and `OrderPage.tsx` show
-   * `addQty` and `unitPrice` only), which is the only reason this has never
-   * reached a contractor. It is still a public field on a money-facing
-   * selector and the comment above it describes the opposite intent.
-   *
-   * The fix is a decision, not a typo — either rename it to a signed delta, or
-   * clamp it and omit the opportunity when it is not genuinely a saving. This
-   * test asserts the CORRECT behaviour so that whichever fix lands turns it
-   * green rather than needing to be rewritten.
+   * A field called "saves" is a claim about money, so it may never hold a
+   * negative number — "you save -$28.00" is not a sentence a money-facing
+   * screen gets to say. Buying up to a break lowers the UNIT price and usually
+   * raises the TOTAL; that case is carried by `addCostCents` instead.
    */
-  it.fails('never reports a negative saving', () => {
+  it('never reports a negative saving', () => {
     const detail = withBreak(80, 500, 100, 428);
     const opportunity = detail.lines[0]?.breakOpportunity;
 
@@ -275,11 +259,15 @@ describe('volume break opportunities', () => {
     expect(opportunity?.savesCents).toBeGreaterThanOrEqual(0);
   });
 
-  it('currently reports the negative figure — pinning the defect until it is fixed', () => {
-    // Paired with the it.fails above so the exact current value is on record.
-    // Delete this test in the same commit that fixes the one above.
-    const detail = withBreak(80, 500, 100, 428);
-    expect(detail.lines[0]?.breakOpportunity?.savesCents).toBe(400_00 - 428_00);
+  it('reports the extra cost of reaching a break instead of a negative saving', () => {
+    // 80 @ $5.00 = $400.00 now; 100 @ $4.28 = $428.00 at the break. The unit
+    // price drops and the bill still goes up $28.00 — the opportunity is still
+    // worth surfacing, it just is not a saving, and each number is under the
+    // name that describes it.
+    const opportunity = withBreak(80, 500, 100, 428).lines[0]?.breakOpportunity;
+
+    expect(opportunity?.savesCents).toBe(0);
+    expect(opportunity?.addCostCents).toBe(428_00 - 400_00);
   });
 
   it('does report a real saving when the break price beats the current total outright', () => {
@@ -287,6 +275,8 @@ describe('volume break opportunities', () => {
     // costs less, which is the case the comment in order.ts describes.
     const detail = withBreak(90, 500, 100, 420);
     expect(detail.lines[0]?.breakOpportunity?.savesCents).toBe(3000);
+    // ...and then there is nothing extra to pay, so the other half is zero.
+    expect(detail.lines[0]?.breakOpportunity?.addCostCents).toBe(0);
   });
 });
 

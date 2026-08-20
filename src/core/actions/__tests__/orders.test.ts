@@ -273,22 +273,12 @@ describe('reorderInStage', () => {
   });
 
   /**
-   * KNOWN DEFECT — see ROADMAP.md §6.
-   *
-   * Every other mutation in actions/orders.ts opens with
-   * `requireCapability(...)`. This one does not, so a Field-role user is
-   * refused a stage move and permitted a reorder — an inconsistency in the one
-   * layer that is supposed to be the single gate for both the buttons and the
-   * AI's tools.
-   *
-   * It has no callers today (board drag-and-drop goes through
-   * `moveOrderToStage`), which is why it has not bitten. It is exported from
-   * the core API surface, so it will.
-   *
    * `edit-scope` is the right capability: reordering the board is arranging
-   * your own work, which is what `edit-scope` covers everywhere else.
+   * your own work, which is what `edit-scope` covers everywhere else in this
+   * file. A gate missing from one mutation is a gate the assistant can walk
+   * through, because it calls these exact functions.
    */
-  it.fails('is gated like every other mutation', () => {
+  it('is gated like every other mutation', () => {
     actAs('tm_ty'); // field
     const planned = plannedOrders();
     const target = planned[planned.length - 1];
@@ -299,17 +289,11 @@ describe('reorderInStage', () => {
   });
 
   /**
-   * KNOWN DEFECT — see ROADMAP.md §6.
-   *
-   * The function writes the post-splice index but returns
-   * `{ ...order, sortOrder: newSortOrder }` — the argument it was given. For an
-   * in-range argument the two agree; for an out-of-range one they do not, and
-   * the caller is handed an object that disagrees with the store it just wrote.
-   *
-   * `Array.prototype.splice` clamps an index beyond the array length, so the
-   * order really lands at the end. The returned value should say so.
+   * The returned order and the stored order are the same order. Returning the
+   * caller's requested index while persisting the post-splice one meant an
+   * out-of-range drop handed back an object that disagreed with the store.
    */
-  it.fails('returns the sortOrder it actually persisted', () => {
+  it('returns the sortOrder it actually persisted', () => {
     const planned = plannedOrders();
     const target = planned[0];
     expect(target).toBeDefined();
@@ -320,16 +304,25 @@ describe('reorderInStage', () => {
     if (!result.ok) return;
 
     expect(result.value.sortOrder).toBe(getOrder(target.id)?.sortOrder);
+    // Past the end means the end of the column, not index 999.
+    expect(result.value.sortOrder).toBe(plannedOrders().length - 1);
   });
 
-  it('currently returns the requested index verbatim — pinning the defect', () => {
-    // Delete this in the same commit that fixes the it.fails above.
+  it('clamps a position below the column instead of counting back from the end', () => {
+    // `splice(-1, ...)` would insert second-from-last. Nobody dragging a card
+    // to position -1 means "second from last", and a NaN must not become a
+    // NaN sortOrder in the store.
     const planned = plannedOrders();
-    const target = planned[0];
+    const target = planned[planned.length - 1];
     if (!target) return;
 
-    const result = reorderInStage(target.id, 999);
-    expect(result.ok && result.value.sortOrder).toBe(999);
-    expect(getOrder(target.id)?.sortOrder).toBe(plannedOrders().length - 1);
+    for (const position of [-5, Number.NaN]) {
+      const result = reorderInStage(target.id, position);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.value.sortOrder).toBe(0);
+      expect(getOrder(target.id)?.sortOrder).toBe(0);
+    }
   });
 });

@@ -3,6 +3,7 @@
 import { supplierName } from '../config/runtime';
 import type { Product } from '../domain/catalog';
 import type { Order, OrderStage, Project, ScopeItem } from '../domain/project';
+import { itemExtended } from '../domain/project';
 import type { Invoice, SalesOrder } from '../domain/supplier';
 import { type IsoDateTime, addDays } from '../lib/time';
 import type { PricingEngine, PricingInput } from '../sim/pricing';
@@ -241,7 +242,7 @@ export function buildScenario(ctx: Ctx): ScenarioData {
   ): SalesOrder {
     const subtotal = items
       .filter((item) => item.orderId === orderRecord.id)
-      .reduce((sum, item) => sum + Math.round((item.unitPrice ?? 0) * item.qty), 0);
+      .reduce((sum, item) => sum + itemExtended(item), 0);
 
     return {
       id,
@@ -301,7 +302,7 @@ export function buildScenario(ctx: Ctx): ScenarioData {
    */
   const kirklandTotal = items
     .filter((item) => item.orderId === kirklandFence.id)
-    .reduce((sum, item) => sum + Math.round((item.unitPrice ?? 0) * item.qty), 0);
+    .reduce((sum, item) => sum + itemExtended(item), 0);
 
   const invoices: Invoice[] = [
     {

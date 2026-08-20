@@ -213,8 +213,20 @@ export function updateOrder(orderId: string, changes: UpdateOrderInput): Result<
   return ok(updated);
 }
 
-/** Reordering within a board column. */
+/**
+ * Reordering within a board column.
+ *
+ * Gated on `edit-scope` like the rest of this file: arranging your own board is
+ * the same kind of act as building the order on it, and a gate missing from one
+ * mutation is a gate the assistant can walk through.
+ *
+ * The position is clamped into the column rather than trusted, and the clamped
+ * position is what both the store and the caller are told — see below.
+ */
 export function reorderInStage(orderId: string, newSortOrder: number): Result<Order> {
+  const gate = requireCapability('edit-scope');
+  if (!gate.ok) return gate;
+
   const order = getOrder(orderId);
   if (!order) return err('That order no longer exists.');
 
@@ -222,13 +234,23 @@ export function reorderInStage(orderId: string, newSortOrder: number): Result<Or
     .filter((o) => o.stage === order.stage && o.id !== orderId)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  siblings.splice(newSortOrder, 0, order);
+  // `splice` silently clamps an index past the end and reads a NEGATIVE one as
+  // an offset from the end, so an out-of-range argument lands somewhere the
+  // caller did not ask for. Clamp it here, into a real position in the column,
+  // and use that one index for BOTH the write and the return value: the
+  // previous version returned the caller's argument while persisting the
+  // post-splice index, so an out-of-range drop handed back an order object that
+  // disagreed with the store it had just written.
+  const requested = Number.isFinite(newSortOrder) ? Math.trunc(newSortOrder) : 0;
+  const index = Math.min(Math.max(requested, 0), siblings.length);
+
+  siblings.splice(index, 0, order);
 
   let collection = ordersStore.get();
-  siblings.forEach((sibling, index) => {
-    collection = patch(collection, sibling.id, { sortOrder: index });
+  siblings.forEach((sibling, position) => {
+    collection = patch(collection, sibling.id, { sortOrder: position });
   });
   ordersStore.set(collection);
 
-  return ok({ ...order, sortOrder: newSortOrder });
+  return ok({ ...order, sortOrder: index });
 }

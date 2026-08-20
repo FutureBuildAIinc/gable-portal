@@ -14,6 +14,8 @@ import {
   computeQuoteTotals,
   isQuoteExpired,
   laborTotal,
+  lineExtended,
+  withMarkup,
 } from '@core/domain/customer-quote';
 import { formatCents } from '@core/lib/money';
 import { daysBetween, formatDate } from '@core/lib/time';
@@ -79,10 +81,7 @@ export function CustomerQuotePage({ token }: Props) {
 
   const selections = quote.lines.filter((line) => line.presentation === 'selection');
   const commodities = quote.lines.filter((line) => line.presentation === 'commodity');
-  const commodityTotal = commodities.reduce(
-    (sum, line) => sum + Math.round(line.unitCost * line.qty),
-    0,
-  );
+  const commodityTotal = commodities.reduce((sum, line) => sum + lineExtended(line), 0);
 
   return (
     <Shell>
@@ -221,7 +220,7 @@ export function CustomerQuotePage({ token }: Props) {
           </ul>
           {!quote.hideLinePrices ? (
             <p className="mt-3 border-gray-100 border-t pt-3 text-right font-medium text-[13px] tabular-nums">
-              {formatCents(Math.round(commodityTotal * (1 + quote.markupPercent / 100)))}
+              {formatCents(withMarkup(commodityTotal, quote.markupPercent))}
             </p>
           ) : null}
         </section>

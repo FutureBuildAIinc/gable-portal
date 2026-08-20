@@ -3,14 +3,15 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { boot } from '../../boot';
 import { seedTemplates } from '../../data/template-seed';
-import { scopeStore } from '../../stores/root';
-import { listOf } from '../../stores/store';
+import { scopeStore, teamStore } from '../../stores/root';
+import { listOf, patch } from '../../stores/store';
 import { moveOrderToStage } from '../orders';
 import {
   addCatalogItem,
   addSpecialItem,
   applyTemplate,
   removeItem,
+  repriceOrder,
   updateItemQtyDetailed,
 } from '../scope';
 
@@ -34,6 +35,11 @@ const PERGOLA = 'ord_miller_pergola'; // the seeded empty draft
 
 function itemsOf(orderId: string) {
   return listOf(scopeStore.get()).filter((item) => item.orderId === orderId);
+}
+
+/** Act as somebody other than Dana (the owner, who may do everything). */
+function actAs(memberId: string): void {
+  teamStore.set({ ...teamStore.get(), activeId: memberId });
 }
 
 describe('adding scope', () => {
@@ -165,6 +171,30 @@ describe('scope is locked once the supplier has the order', () => {
   it('allows edits again once the order is pulled back to Plan', () => {
     expect(moveOrderToStage('ord_anderson', 'plan').ok).toBe(true);
     expect(addCatalogItem({ orderId: 'ord_anderson', product: 'PT-4X4-8', qty: 1 }).ok).toBe(true);
+  });
+});
+
+describe('repriceOrder', () => {
+  beforeEach(() => boot({ reset: true, seed: 20_260_730 }));
+
+  it('pulls a stale unit price back to what the ERP says today', () => {
+    const added = addCatalogItem({ orderId: PERGOLA, product: 'LBR-2X4-8-DF', qty: 10 });
+    if (!added.ok) throw new Error(added.error);
+    // Stand in for a dealer pricing change since the line was added.
+    scopeStore.set(patch(scopeStore.get(), added.value.id, { unitPrice: 99_999 }));
+
+    const result = repriceOrder(PERGOLA);
+
+    expect(result.ok && result.value).toBe(1);
+    expect(scopeStore.get().byId[added.value.id]?.unitPrice).toBe(462);
+  });
+
+  it('is gated like every other mutation in this file', () => {
+    // It rewrites the unit price on lines somebody is about to commit money to,
+    // so it belongs behind the same `edit-scope` gate as the rest — otherwise a
+    // role refused an edit could still move every price on the order.
+    actAs('tm_ty'); // field
+    expect(repriceOrder(PERGOLA).ok).toBe(false);
   });
 });
 

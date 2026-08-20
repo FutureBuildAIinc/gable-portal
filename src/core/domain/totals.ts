@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
 // SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
-import type { Cents } from '../lib/money';
+import { type Cents, multiplyCents } from '../lib/money';
 import type { IsoDateTime } from '../lib/time';
 import { type ScopeItem, isPriced, itemExtended, needsQuoteDesk } from './project';
 
@@ -31,7 +31,7 @@ export function orderTotals(items: readonly ScopeItem[], now?: IsoDateTime): Ord
   for (const item of items) {
     if (isPriced(item, now)) {
       subtotal += itemExtended(item);
-      listSubtotal += Math.round((item.listPrice ?? item.unitPrice ?? 0) * item.qty);
+      listSubtotal += multiplyCents(item.listPrice ?? item.unitPrice ?? 0, item.qty);
     } else {
       unpricedCount++;
     }

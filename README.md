@@ -15,7 +15,7 @@ building materials) suppliers.** Plan → Quote → Order → Invoice, on one bo
 > ### Read this before you read anything else
 >
 > **This is a working prototype, not a shipping product.** It is an unusually
-> well-built prototype — 449 tests, a strict TypeScript build, five out-of-band
+> well-built prototype — 451 tests, a strict TypeScript build, five out-of-band
 > browser-driven audit gates, and a domain layer with real invariants — but the
 > boundary is sharp and worth stating plainly:
 >

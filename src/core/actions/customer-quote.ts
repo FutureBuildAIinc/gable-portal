@@ -13,6 +13,7 @@ import {
 } from '../domain/customer-quote';
 import { isPriced } from '../domain/project';
 import { newId, newShareToken } from '../lib/ids';
+import { formatCents } from '../lib/money';
 import { type Result, err, ok } from '../lib/result';
 import { type IsoDateTime, addDays } from '../lib/time';
 import {
@@ -325,7 +326,7 @@ export function sendCustomerQuote(quoteId: string): Result<CustomerQuote> {
   const totals = computeQuoteTotals(updated);
   log(
     'customer-quote.sent',
-    `Sent ${updated.number} to ${updated.customer.name} — ${(totals.grand / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`,
+    `Sent ${updated.number} to ${updated.customer.name} — ${formatCents(totals.grand)}`,
     quote.orderId,
   );
 
