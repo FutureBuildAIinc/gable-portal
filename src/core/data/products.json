@@ -1,0 +1,590 @@
+[
+    {
+        "id": 1,
+        "sku": "LBR-2X4-8-DF",
+        "name": "2x4x8' Douglas Fir #2 & Better",
+        "description": "Premium Douglas Fir dimensional lumber, ideal for framing, general construction. Kiln-dried for stability.",
+        "categoryId": 11,
+        "imageUrl": "/images/products/2x4-fir.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Weyerhaeuser",
+        "price": 5.97,
+        "msrp": 7.49,
+        "tags": [
+            "framing",
+            "dimensional",
+            "structural"
+        ],
+        "relatedSkus": [
+            "LBR-2X4-10-DF",
+            "LBR-2X4-12-DF",
+            "LBR-2X6-8-DF"
+        ]
+    },
+    {
+        "id": 2,
+        "sku": "LBR-2X4-10-DF",
+        "name": "2x4x10' Douglas Fir #2 & Better",
+        "description": "Premium Douglas Fir dimensional lumber, 10-foot length. Kiln-dried for stability.",
+        "categoryId": 11,
+        "imageUrl": "/images/products/2x4-fir.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Weyerhaeuser",
+        "price": 7.48,
+        "msrp": 9.29,
+        "tags": [
+            "framing",
+            "dimensional",
+            "structural"
+        ],
+        "relatedSkus": [
+            "LBR-2X4-8-DF",
+            "LBR-2X4-12-DF"
+        ]
+    },
+    {
+        "id": 3,
+        "sku": "LBR-2X4-12-DF",
+        "name": "2x4x12' Douglas Fir #2 & Better",
+        "description": "Premium Douglas Fir dimensional lumber, 12-foot length. Kiln-dried, strong and straight.",
+        "categoryId": 11,
+        "imageUrl": "/images/products/2x4-fir.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Weyerhaeuser",
+        "price": 8.97,
+        "msrp": 11.19,
+        "tags": [
+            "framing",
+            "dimensional",
+            "structural"
+        ],
+        "relatedSkus": [
+            "LBR-2X4-8-DF",
+            "LBR-2X4-10-DF"
+        ]
+    },
+    {
+        "id": 4,
+        "sku": "LBR-2X6-8-DF",
+        "name": "2x6x8' Douglas Fir #2 & Better",
+        "description": "Kiln-dried Douglas Fir 2x6 dimensional lumber for framing, floor joists, and headers.",
+        "categoryId": 11,
+        "imageUrl": "/images/products/2x6-fir.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Weyerhaeuser",
+        "price": 8.47,
+        "msrp": 10.59,
+        "tags": [
+            "framing",
+            "dimensional",
+            "structural"
+        ],
+        "relatedSkus": [
+            "LBR-2X4-8-DF",
+            "LBR-2X6-12-DF"
+        ]
+    },
+    {
+        "id": 5,
+        "sku": "LBR-2X6-12-DF",
+        "name": "2x6x12' Douglas Fir #2 & Better",
+        "description": "Kiln-dried Douglas Fir 2x6 dimensional lumber, 12-foot length.",
+        "categoryId": 11,
+        "imageUrl": "/images/products/2x6-fir.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Weyerhaeuser",
+        "price": 12.97,
+        "msrp": 15.99,
+        "tags": [
+            "framing",
+            "dimensional",
+            "structural"
+        ],
+        "relatedSkus": [
+            "LBR-2X6-8-DF",
+            "LBR-2X4-12-DF"
+        ]
+    },
+    {
+        "id": 6,
+        "sku": "PLY-CDX-1/2-4X8",
+        "name": "1/2\" CDX Plywood 4x8 Sheet",
+        "description": "Exterior-grade CDX plywood for roof sheathing, subfloors, and wall sheathing. Exposure 1 rated.",
+        "categoryId": 14,
+        "imageUrl": "/images/products/cdx-plywood.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Georgia-Pacific",
+        "price": 32.98,
+        "msrp": 41.99,
+        "tags": [
+            "sheathing",
+            "plywood",
+            "exterior"
+        ],
+        "relatedSkus": [
+            "PLY-CDX-3/4-4X8",
+            "PLY-OSB-7/16-4X8"
+        ],
+        "coverageSqFt": 32,
+        "inStock": 85,
+        "leadTime": "In Stock - Ships Tomorrow",
+        "relatedProducts": [
+            15
+        ]
+    },
+    {
+        "id": 7,
+        "sku": "PLY-CDX-3/4-4X8",
+        "name": "3/4\" CDX Plywood 4x8 Sheet",
+        "description": "Structural CDX plywood, 3/4\" thick. Ideal for subflooring, concrete forming, and heavy-duty sheathing.",
+        "categoryId": 14,
+        "imageUrl": "/images/products/cdx-plywood.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Georgia-Pacific",
+        "price": 46.99,
+        "msrp": 56.99,
+        "tags": [
+            "sheathing",
+            "plywood",
+            "subflooring"
+        ],
+        "relatedSkus": [
+            "PLY-CDX-1/2-4X8"
+        ],
+        "coverageSqFt": 32,
+        "inStock": 85,
+        "leadTime": "In Stock - Ships Tomorrow",
+        "relatedProducts": [
+            15
+        ]
+    },
+    {
+        "id": 8,
+        "sku": "PLY-OSB-7/16-4X8",
+        "name": "7/16\" OSB Sheathing 4x8 Sheet",
+        "description": "Oriented strand board for wall and roof sheathing. APA-rated, Exposure 1.",
+        "categoryId": 14,
+        "imageUrl": "/images/products/osb.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "LP Building Solutions",
+        "price": 22.48,
+        "msrp": 28.99,
+        "tags": [
+            "sheathing",
+            "osb",
+            "structural"
+        ],
+        "relatedSkus": [
+            "PLY-CDX-1/2-4X8"
+        ],
+        "coverageSqFt": 32,
+        "inStock": 85,
+        "leadTime": "In Stock - Ships Tomorrow",
+        "relatedProducts": [
+            15
+        ]
+    },
+    {
+        "id": 9,
+        "sku": "PT-2X6-8",
+        "name": "2x6x8' Pressure-Treated #2 Ground Contact",
+        "description": "Ground-contact rated pressure-treated lumber for decks, fences, landscaping. MCA preservative.",
+        "categoryId": 12,
+        "imageUrl": "/images/products/pt-lumber.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "YellaWood",
+        "price": 12.98,
+        "msrp": 15.99,
+        "tags": [
+            "treated",
+            "deck",
+            "exterior",
+            "ground-contact"
+        ],
+        "relatedSkus": [
+            "PT-2X6-12",
+            "PT-4X4-8"
+        ]
+    },
+    {
+        "id": 10,
+        "sku": "PT-2X6-12",
+        "name": "2x6x12' Pressure-Treated #2 Ground Contact",
+        "description": "Ground-contact rated pressure-treated lumber, 12-foot length. MCA preservative treatment.",
+        "categoryId": 12,
+        "imageUrl": "/images/products/pt-lumber.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "YellaWood",
+        "price": 18.97,
+        "msrp": 23.49,
+        "tags": [
+            "treated",
+            "deck",
+            "exterior",
+            "ground-contact"
+        ],
+        "relatedSkus": [
+            "PT-2X6-8",
+            "PT-4X4-8"
+        ]
+    },
+    {
+        "id": 11,
+        "sku": "PT-4X4-8",
+        "name": "4x4x8' Pressure-Treated Post",
+        "description": "Pressure-treated 4x4 post for fence, deck, and structural support. Ground-contact rated.",
+        "categoryId": 12,
+        "imageUrl": "/images/products/pt-post.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "YellaWood",
+        "price": 14.98,
+        "msrp": 18.49,
+        "tags": [
+            "treated",
+            "post",
+            "fence",
+            "ground-contact"
+        ],
+        "relatedSkus": [
+            "PT-2X6-8",
+            "PT-6X6-8"
+        ]
+    },
+    {
+        "id": 12,
+        "sku": "PT-6X6-8",
+        "name": "6x6x8' Pressure-Treated Post",
+        "description": "Heavy-duty 6x6 pressure-treated post for deck supports, pergolas, and large-scale construction.",
+        "categoryId": 12,
+        "imageUrl": "/images/products/pt-post-6x6.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "YellaWood",
+        "price": 29.98,
+        "msrp": 36.99,
+        "tags": [
+            "treated",
+            "post",
+            "structural",
+            "ground-contact"
+        ],
+        "relatedSkus": [
+            "PT-4X4-8"
+        ]
+    },
+    {
+        "id": 13,
+        "sku": "TRIM-1X4-8-POP",
+        "name": "1x4x8' Primed Poplar Trim Board",
+        "description": "Factory-primed poplar trim board for interior and exterior use. Ready for finish paint.",
+        "categoryId": 53,
+        "imageUrl": "/images/products/trim-primed.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Arauco",
+        "price": 9.48,
+        "msrp": 12.49,
+        "tags": [
+            "trim",
+            "millwork",
+            "primed",
+            "interior"
+        ],
+        "relatedSkus": [
+            "TRIM-1X6-8-POP"
+        ]
+    },
+    {
+        "id": 14,
+        "sku": "TRIM-1X6-8-POP",
+        "name": "1x6x8' Primed Poplar Trim Board",
+        "description": "Factory-primed poplar trim board, 6-inch width. Smooth finish, easy to paint.",
+        "categoryId": 53,
+        "imageUrl": "/images/products/trim-primed.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Arauco",
+        "price": 14.98,
+        "msrp": 18.49,
+        "tags": [
+            "trim",
+            "millwork",
+            "primed",
+            "interior"
+        ],
+        "relatedSkus": [
+            "TRIM-1X4-8-POP"
+        ]
+    },
+    {
+        "id": 15,
+        "sku": "HW-SD-3IN-LB",
+        "name": "3\" Structural Screws (1lb Box)",
+        "description": "Multi-purpose structural screws, star drive, coated for interior/exterior. ~75 screws per pound.",
+        "categoryId": 61,
+        "imageUrl": "/images/products/structural-screws.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "GRK",
+        "price": 12.97,
+        "msrp": 15.99,
+        "tags": [
+            "fasteners",
+            "screws",
+            "structural"
+        ],
+        "relatedSkus": [
+            "HW-JH-LVL"
+        ]
+    },
+    {
+        "id": 16,
+        "sku": "HW-JH-LVL",
+        "name": "Adjustable Joist Hanger (2x6–2x12)",
+        "description": "Galvanized adjustable joist hanger for various dimensional lumber widths. Code-compliant.",
+        "categoryId": 62,
+        "imageUrl": "/images/products/joist-hanger.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Simpson Strong-Tie",
+        "price": 4.28,
+        "msrp": 5.49,
+        "tags": [
+            "connectors",
+            "hardware",
+            "structural"
+        ],
+        "relatedSkus": [
+            "HW-SD-3IN-LB"
+        ]
+    },
+    {
+        "id": 17,
+        "sku": "INS-R19-KF-15",
+        "name": "R-19 Kraft-Faced Fiberglass Batt 15\" (77.5 sqft)",
+        "description": "6.25\" thick unfaced fiberglass batt insulation for 2x6 walls and floors. 15\" width.",
+        "categoryId": 15,
+        "imageUrl": "/images/products/insulation-batt.png",
+        "baseUom": "BG",
+        "isActive": true,
+        "brand": "Owens Corning",
+        "price": 42.98,
+        "msrp": 52.99,
+        "tags": [
+            "insulation",
+            "fiberglass",
+            "batt",
+            "wall"
+        ],
+        "relatedSkus": [
+            "INS-R30-UF-16"
+        ],
+        "coverageSqFt": 77.5,
+        "inStock": 12,
+        "leadTime": "Low Stock - Order Soon"
+    },
+    {
+        "id": 18,
+        "sku": "INS-R30-UF-16",
+        "name": "R-30 Unfaced Fiberglass Batt 16\" (88.0 sqft)",
+        "description": "10.25\" thick unfaced fiberglass insulation for attic floors and cathedral ceilings.",
+        "categoryId": 15,
+        "imageUrl": "/images/products/insulation-batt-r30.png",
+        "baseUom": "BG",
+        "isActive": true,
+        "brand": "Owens Corning",
+        "price": 56.97,
+        "msrp": 69.99,
+        "tags": [
+            "insulation",
+            "fiberglass",
+            "batt",
+            "attic"
+        ],
+        "relatedSkus": [
+            "INS-R19-KF-15"
+        ],
+        "coverageSqFt": 88,
+        "inStock": 12,
+        "leadTime": "Low Stock - Order Soon"
+    },
+    {
+        "id": 19,
+        "sku": "RF-ARCH-PEWTER",
+        "name": "Architectural Shingles - Pewter Gray (33.3 sqft)",
+        "description": "Laminated architectural asphalt shingles with algae-resistant granules. Limited lifetime warranty.",
+        "categoryId": 51,
+        "imageUrl": "/images/products/shingles-gray.png",
+        "baseUom": "BD",
+        "isActive": true,
+        "brand": "GAF",
+        "price": 33.98,
+        "msrp": 42.99,
+        "tags": [
+            "roofing",
+            "shingles",
+            "architectural"
+        ],
+        "relatedSkus": [
+            "RF-FELT-15"
+        ]
+    },
+    {
+        "id": 20,
+        "sku": "RF-FELT-15",
+        "name": "#15 Asphalt Roofing Felt (432 sqft)",
+        "description": "Standard asphalt-saturated roofing felt underlayment, 36\" x 144'. ASTM D4869 compliant.",
+        "categoryId": 51,
+        "imageUrl": "/images/products/roofing-felt.png",
+        "baseUom": "RL",
+        "isActive": true,
+        "brand": "GAF",
+        "price": 19.98,
+        "msrp": 24.99,
+        "tags": [
+            "roofing",
+            "underlayment",
+            "felt"
+        ],
+        "relatedSkus": [
+            "RF-ARCH-PEWTER"
+        ]
+    },
+    {
+        "id": 21,
+        "sku": "DECK-TREX-CLM-12",
+        "name": "Trex Enhance Clam Shell Composite Decking 12'",
+        "description": "Low-maintenance composite decking board with protective shell. Resists fading, staining, and mold.",
+        "categoryId": 21,
+        "imageUrl": "/images/products/trex-clam.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Trex",
+        "price": 32.49,
+        "msrp": 39.99,
+        "tags": [
+            "decking",
+            "composite",
+            "exterior"
+        ],
+        "relatedSkus": [
+            "DECK-TREX-SADDLE-12"
+        ],
+        "coverageSqFt": 5.5,
+        "coverageLf": 12,
+        "inStock": 320,
+        "leadTime": "In Stock at Gable Supply",
+        "relatedProducts": [
+            100,
+            15,
+            9
+        ]
+    },
+    {
+        "id": 22,
+        "sku": "DECK-TREX-SADDLE-12",
+        "name": "Trex Enhance Saddle Composite Decking 12'",
+        "description": "Saddle-toned composite decking board. Fade, stain, scratch, and mold resistant.",
+        "categoryId": 21,
+        "imageUrl": "/images/products/trex-saddle.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Trex",
+        "price": 32.49,
+        "msrp": 39.99,
+        "tags": [
+            "decking",
+            "composite",
+            "exterior"
+        ],
+        "relatedSkus": [
+            "DECK-TREX-CLM-12"
+        ],
+        "coverageSqFt": 5.5,
+        "coverageLf": 12,
+        "inStock": 320,
+        "leadTime": "In Stock at Gable Supply",
+        "relatedProducts": [
+            100,
+            15,
+            9
+        ]
+    },
+    {
+        "id": 23,
+        "sku": "CONC-RMX-80",
+        "name": "80lb Bag Ready-Mix Concrete",
+        "description": "High-strength ready-mix concrete for setting posts, building sidewalks, and general repairs. 4000 PSI.",
+        "categoryId": 16,
+        "imageUrl": "/images/products/concrete-bag.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Quikrete",
+        "price": 5.98,
+        "msrp": 7.49,
+        "tags": [
+            "concrete",
+            "masonry",
+            "foundation"
+        ],
+        "relatedSkus": [
+            "CONC-REBAR-10"
+        ]
+    },
+    {
+        "id": 24,
+        "sku": "CONC-REBAR-10",
+        "name": "#4 Rebar 10' (1/2\" Diameter)",
+        "description": "Standard #4 deformed steel rebar for concrete reinforcement. Grade 60.",
+        "categoryId": 16,
+        "imageUrl": "/images/products/rebar.png",
+        "baseUom": "EA",
+        "isActive": true,
+        "brand": "Generic",
+        "price": 7.48,
+        "msrp": 9.99,
+        "tags": [
+            "concrete",
+            "rebar",
+            "reinforcement"
+        ],
+        "relatedSkus": [
+            "CONC-RMX-80"
+        ]
+    },
+    {
+        "id": 100,
+        "sku": "HW-TREX-HIDEAWAY",
+        "name": "Trex Hideaway Universal Hidden Fasteners (90ct)",
+        "description": "Install grooved Trex decking without visible screws. Box of 90 covers approx 50 sq ft.",
+        "categoryId": 61,
+        "imageUrl": "/images/products/structural-screws.png",
+        "baseUom": "BX",
+        "isActive": true,
+        "brand": "Trex",
+        "price": 34.99,
+        "msrp": 45,
+        "tags": [
+            "fasteners",
+            "decking",
+            "trex"
+        ],
+        "relatedSkus": [
+            "DECK-TREX-CLM-12",
+            "DECK-TREX-SADDLE-12"
+        ],
+        "inStock": 45,
+        "leadTime": "In Stock at Gable Supply"
+    }
+]

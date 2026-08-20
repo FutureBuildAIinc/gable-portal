@@ -1,0 +1,39 @@
+[
+  { "id": 1, "name": "Lumber", "parentId": null, "slug": "lumber", "isActive": true, "treeLevel": 0 },
+  { "id": 11, "name": "Framing Lumber", "parentId": 1, "slug": "framing-lumber", "isActive": true, "treeLevel": 1 },
+  { "id": 12, "name": "Pressure Treated", "parentId": 1, "slug": "pressure-treated", "isActive": true, "treeLevel": 1 },
+  { "id": 13, "name": "Cedar", "parentId": 1, "slug": "cedar", "isActive": true, "treeLevel": 1 },
+  { "id": 14, "name": "Engineered Wood", "parentId": 1, "slug": "engineered-wood", "isActive": true, "treeLevel": 1 },
+
+  { "id": 2, "name": "Decks, Railings & Fencing", "parentId": null, "slug": "decks-railings-fencing", "isActive": true, "treeLevel": 0 },
+  { "id": 21, "name": "Composite Decking", "parentId": 2, "slug": "composite-decking", "isActive": true, "treeLevel": 1 },
+  { "id": 22, "name": "Wood Decking", "parentId": 2, "slug": "wood-decking", "isActive": true, "treeLevel": 1 },
+  { "id": 23, "name": "Railing Systems", "parentId": 2, "slug": "railing-systems", "isActive": true, "treeLevel": 1 },
+  { "id": 24, "name": "Fencing", "parentId": 2, "slug": "fencing", "isActive": true, "treeLevel": 1 },
+
+  { "id": 3, "name": "Interior Doors & Trim", "parentId": null, "slug": "interior-doors-trim", "isActive": true, "treeLevel": 0 },
+
+  { "id": 4, "name": "Kitchen & Bath", "parentId": null, "slug": "kitchen-bath", "isActive": true, "treeLevel": 0 },
+
+  { "id": 5, "name": "Roofing & Siding", "parentId": null, "slug": "roofing-siding", "isActive": true, "treeLevel": 0 },
+  { "id": 51, "name": "Roofing", "parentId": 5, "slug": "roofing", "isActive": true, "treeLevel": 1 },
+  { "id": 52, "name": "Siding", "parentId": 5, "slug": "siding", "isActive": true, "treeLevel": 1 },
+  { "id": 53, "name": "Trim & Moulding", "parentId": 5, "slug": "trim-moulding", "isActive": true, "treeLevel": 1 },
+
+  { "id": 6, "name": "Tools & Fasteners", "parentId": null, "slug": "tools-fasteners", "isActive": true, "treeLevel": 0 },
+  { "id": 61, "name": "Fasteners", "parentId": 6, "slug": "fasteners", "isActive": true, "treeLevel": 1 },
+  { "id": 62, "name": "Connectors & Hardware", "parentId": 6, "slug": "connectors-hardware", "isActive": true, "treeLevel": 1 },
+  { "id": 63, "name": "Power Tools", "parentId": 6, "slug": "power-tools", "isActive": true, "treeLevel": 1 },
+
+  { "id": 7, "name": "Flooring", "parentId": null, "slug": "flooring", "isActive": true, "treeLevel": 0 },
+
+  { "id": 8, "name": "Appliances", "parentId": null, "slug": "appliances", "isActive": true, "treeLevel": 0 },
+
+  { "id": 9, "name": "Farm & Ranch", "parentId": null, "slug": "farm-ranch", "isActive": true, "treeLevel": 0 },
+
+  { "id": 10, "name": "Paint & Stain", "parentId": null, "slug": "paint-stain", "isActive": true, "treeLevel": 0 },
+
+  { "id": 15, "name": "Insulation & Housewrap", "parentId": null, "slug": "insulation-housewrap", "isActive": true, "treeLevel": 0 },
+
+  { "id": 16, "name": "Concrete & Masonry", "parentId": null, "slug": "concrete-masonry", "isActive": true, "treeLevel": 0 }
+]

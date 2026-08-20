@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: LicenseRef-OpenLBM-Docs-1.0
+# SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+#
+# Dependabot keeps the two dependency surfaces of this repo current: the npm
+# project at the repository root, and the GitHub Actions used by
+# .github/workflows/.
+#
+# Unlike gable-ai-lm there is no `gomod` entry — this repository has no Go in
+# it. If a Go component is ever added, add its ecosystem here rather than
+# assuming the npm entry covers it.
+#
+# Cadence is weekly rather than daily on purpose: weekly PRs keep the review
+# queue manageable for a small maintainer team, and the open-PR limits stop a
+# dependency storm from burying real work.
+#
+# NOTE: `reviewers`/`assignees` are intentionally omitted — .github/CODEOWNERS
+# still has placeholder team handles. Add them here once the real teams exist.
+
+version: 2
+
+updates:
+  # ---------------------------------------------------------------------------
+  # The Vite + React + TypeScript app. package.json is at the repo root.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    versioning-strategy: increase-if-necessary
+    groups:
+      # Build/test tooling churns constantly and is low risk — one PR a week
+      # for the lot of it.
+      dev-tooling:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      prod-minor-and-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Biome 2.x changed its config schema and its rule set. biome.json pins
+      # `$schema` to 1.9.4 and defines `nursery.noRestrictedImports` overrides
+      # that enforce the framework-free rule for src/core/; a major bump needs
+      # that config migrated by hand, in the same PR, or the architectural
+      # guard silently stops running.
+      - dependency-name: "@biomejs/biome"
+        update-types: ["version-update:semver-major"]
+      # React 19 is a deliberate, reviewed migration — @testing-library/react,
+      # @types/react, and the Radix/dnd-kit peer ranges all move with it.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      # Tailwind 4 is already the version in use and its Vite plugin is
+      # versioned in lockstep; a major on either without the other breaks the
+      # stylesheet at build time, which `src/ui/styles/theme.css` depends on
+      # entirely.
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tailwindcss/vite"
+        update-types: ["version-update:semver-major"]
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions used by .github/workflows/.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns:
+          - "*"

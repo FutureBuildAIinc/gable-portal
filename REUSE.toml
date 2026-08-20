@@ -1,0 +1,140 @@
+version = 1
+
+# Gable Portal per-component licensing, in the REUSE 3.x machine-readable form.
+# This file mirrors LICENSE-MAP.md; when the two disagree, fix both.
+#
+# The portal is a Community-Source *satellite* of the Gable ecosystem, so — like
+# gable-ai-lm and unlike the host repo — its map is flat. There is no
+# Commons/Surface/Connector split here: the whole product, the React app under
+# `src/`, the Node host and Vite middleware under `server/`, the seed data, the
+# demo imagery, and the out-of-band gates under `scripts/`, is one Licensed Work
+# under LicenseRef-OpenLBM-Community-Source-1.0. Prose and repo plumbing are
+# LicenseRef-OpenLBM-Docs-1.0. That is the entire map.
+#
+# Every file in the tree already carries a matching SPDX header (or a `.license`
+# sidecar, for formats that cannot hold a comment). The annotations below are a
+# backstop, not the primary mechanism: they mean a file added tomorrow is
+# covered the moment it lands, instead of the day someone remembers to paste a
+# header into it. `reuse lint` is happy either way; the belt-and-braces exist so
+# the license job in .github/workflows/ci.yml never goes red for a missing
+# header on an otherwise-correct PR.
+#
+# ORDER MATTERS: when a path matches more than one [[annotations]] block, the
+# LAST matching block wins. `docs/**` below relies on this — it sits after the
+# broad `public/**` and root-file blocks on purpose.
+
+# ---------------------------------------------------------------------------
+# The Licensed Work
+# ---------------------------------------------------------------------------
+# The framework-free core (`src/core/`), the React surface (`src/ui/`), the
+# dealer admin console (`src/admin/`), and the two entry points.
+[[annotations]]
+path = [
+  "src/**",
+  "index.html",
+  "admin.html",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 FutureBuild, Inc. and OpenLBM contributors"
+SPDX-License-Identifier = "LicenseRef-OpenLBM-Community-Source-1.0"
+
+# The server half. `server/` is genuinely dual-purpose — the same
+# `(req, res) => void` handlers are mounted by the Vite dev plugin and by the
+# production host in `server/serve.ts` — so it is part of the Licensed Work in
+# both roles, not repo plumbing.
+[[annotations]]
+path = [
+  "server/**",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 FutureBuild, Inc. and OpenLBM contributors"
+SPDX-License-Identifier = "LicenseRef-OpenLBM-Community-Source-1.0"
+
+# The out-of-band gates: the a11y audit, the two security smokes, the e2e
+# walkthrough, the contrast probe, and the user-guide capture harness. These
+# are Community-Source rather than Docs — unlike a CI workflow, they are
+# runnable programs that drive the product, an operator can and should run them
+# against their own deployment, and `npm run predeploy` is a documented step of
+# shipping it.
+[[annotations]]
+path = [
+  "scripts/**",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 FutureBuild, Inc. and OpenLBM contributors"
+SPDX-License-Identifier = "LicenseRef-OpenLBM-Community-Source-1.0"
+
+# Build configuration and static assets that ship in the bundle.
+#
+# NOTE ON `public/images/brands/`: those nine files are AI-GENERATED PLACEHOLDER
+# imagery that depicts the marks of real manufacturers (Weyerhaeuser, GAF, Trex,
+# Simpson Strong-Tie, and others). The SPDX header claims FutureBuild copyright
+# in the *generated file*; it makes no claim to the depicted marks, which belong
+# to their owners and are used here only to make a demo catalog legible. They
+# are tracked for replacement — see ROADMAP.md, "Known problems we are not
+# hiding".
+[[annotations]]
+path = [
+  "public/**",
+  "package.json",
+  "package-lock.json",
+  "tsconfig.json",
+  "biome.json",
+  "vite.config.ts",
+  "vitest.config.ts",
+  ".env.example",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 FutureBuild, Inc. and OpenLBM contributors"
+SPDX-License-Identifier = "LicenseRef-OpenLBM-Community-Source-1.0"
+
+# ---------------------------------------------------------------------------
+# Prose
+# ---------------------------------------------------------------------------
+# Root-level documentation. `*.md` matches root-level markdown ONLY — a single
+# `*` does not cross a `/`, so nothing under src/ or server/ is affected. Using
+# the glob rather than naming README.md, CLAUDE.md, ROADMAP.md, CONTRIBUTING*.md,
+# SECURITY.md and CODE_OF_CONDUCT.md individually means the next document is
+# covered on the day it is written.
+#
+# `docs/**` covers the user guide, the strategy note, and the 31 screenshots the
+# guide embeds. The screenshots are Docs rather than Community-Source because
+# they are illustrations of the prose, not assets the product loads.
+#
+# LICENSE, LICENSES/*, LICENSE-MAP.md and REUSE.toml itself are deliberately
+# absent: the REUSE specification exempts license files and the config file from
+# needing annotation, and listing them here would be a no-op at best.
+[[annotations]]
+path = [
+  "*.md",
+  "docs/**",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 FutureBuild, Inc. and OpenLBM contributors"
+SPDX-License-Identifier = "LicenseRef-OpenLBM-Docs-1.0"
+
+# ---------------------------------------------------------------------------
+# Repo plumbing
+# ---------------------------------------------------------------------------
+# CI workflows, the REUSE gate script, issue/PR templates, CODEOWNERS,
+# dependabot config, ignore files, and the Claude contributor kit.
+#
+# These are Docs, not Community-Source, for a specific reason: they are not part
+# of the Licensed Work. Nobody "uses the portal in production" by running our
+# GitHub Actions workflow, so applying a license whose central term is a
+# production-use condition to a CI config would be nonsense. They exist to
+# develop *this repository*, and they are licensed the same way the rest of the
+# project's meta-material is. This matches gable and gable-ai-lm.
+#
+# `.claude/**` is listed even though .gitignore excludes the directory — the
+# files under it are tracked (they predate the ignore rule), so `reuse lint`
+# still sees them.
+[[annotations]]
+path = [
+  ".github/**",
+  ".claude/**",
+  ".gitignore",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 FutureBuild, Inc. and OpenLBM contributors"
+SPDX-License-Identifier = "LicenseRef-OpenLBM-Docs-1.0"

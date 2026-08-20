@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: LicenseRef-OpenLBM-Docs-1.0
+# SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+node_modules/
+dist/
+coverage/
+
+# Env — the `!.env.example` exception is deliberate. An earlier .env.production
+# was tracked in this repo and leaked a deploy token. Never loosen this pattern.
+.env
+.env.*
+!.env.example
+
+# Dealer runtime config and the admin-stored LLM credential. Never tracked:
+# secrets.json holds a live API key.
+.gablenow/
+
+*.log
+*.local
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+.claude/
+.agents/
+.gemini/
+
+# Incremental build cache — churns on every build.
+*.tsbuildinfo
+dist-server/

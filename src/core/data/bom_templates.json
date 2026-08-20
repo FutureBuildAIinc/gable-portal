@@ -1,0 +1,58 @@
+[
+  {
+    "id": "tpl-deck-10x12",
+    "name": "10x12 Ground-Level Deck",
+    "description": "Complete materials list for a 10'x12' ground-level pressure-treated deck with composite decking, including posts, beams, joists, decking, fasteners, and concrete.",
+    "category": "deck",
+    "items": [
+      { "productId": 12, "quantity": 4, "notes": "6x6 support posts — cut to height" },
+      { "productId": 5, "quantity": 4, "notes": "2x6x12' beams — doubled for beam assembly" },
+      { "productId": 10, "quantity": 8, "notes": "2x6x12' joists at 16\" OC" },
+      { "productId": 9, "quantity": 4, "notes": "2x6x8' rim joists and blocking" },
+      { "productId": 21, "quantity": 20, "notes": "Trex composite decking boards — 12' lengths" },
+      { "productId": 15, "quantity": 5, "notes": "3\" structural screws for framing" },
+      { "productId": 16, "quantity": 16, "notes": "Joist hangers for each joist connection" },
+      { "productId": 23, "quantity": 8, "notes": "80lb concrete bags for post footings" }
+    ]
+  },
+  {
+    "id": "tpl-fence-100lf",
+    "name": "100 LF Privacy Fence (6' Wood)",
+    "description": "Materials for 100 linear feet of 6-foot tall wood privacy fence with pressure-treated posts and cedar-tone pickets.",
+    "category": "fence",
+    "items": [
+      { "productId": 11, "quantity": 18, "notes": "4x4x8' fence posts — 6' apart" },
+      { "productId": 4, "quantity": 36, "notes": "2x6x8' horizontal rails — 2 per section" },
+      { "productId": 1, "quantity": 200, "notes": "2x4x8' fence pickets — 6\" OC per section" },
+      { "productId": 23, "quantity": 18, "notes": "80lb concrete bags for post footings" },
+      { "productId": 15, "quantity": 8, "notes": "3\" screws for rail and picket attachment" }
+    ]
+  },
+  {
+    "id": "tpl-garage-24x24",
+    "name": "24x24 Garage Frame",
+    "description": "Framing materials for a 24'x24' detached garage including studs, plates, headers, sheathing, and structural hardware.",
+    "category": "garage",
+    "items": [
+      { "productId": 1, "quantity": 120, "notes": "2x4x8' wall studs at 16\" OC" },
+      { "productId": 2, "quantity": 24, "notes": "2x4x10' top/bottom plates" },
+      { "productId": 3, "quantity": 8, "notes": "2x4x12' headers and cripple studs" },
+      { "productId": 4, "quantity": 14, "notes": "2x6x8' ceiling joists / rafters" },
+      { "productId": 8, "quantity": 32, "notes": "7/16\" OSB wall sheathing panels" },
+      { "productId": 7, "quantity": 16, "notes": "3/4\" plywood roof sheathing" },
+      { "productId": 15, "quantity": 10, "notes": "3\" structural screws for framing" },
+      { "productId": 16, "quantity": 28, "notes": "Joist hangers for rafter connections" }
+    ]
+  },
+  {
+    "id": "tpl-roof-20sq",
+    "name": "Basic Roof Reroof (20 SQ)",
+    "description": "Roofing materials for a 20-square (2,000 sqft) reroof job including architectural shingles, underlayment, and accessories.",
+    "category": "roof",
+    "items": [
+      { "productId": 19, "quantity": 60, "notes": "Architectural shingles — 3 bundles per square" },
+      { "productId": 20, "quantity": 5, "notes": "#15 roofing felt underlayment rolls" },
+      { "productId": 15, "quantity": 6, "notes": "Roofing screws / fasteners" }
+    ]
+  }
+]

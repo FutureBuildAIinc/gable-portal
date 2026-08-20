@@ -1,0 +1,10 @@
+<!--
+SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
+SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="oklch(52% 0.14 62)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3.2 11.4 L12 4.2 L20.8 11.4"/>
+  <path d="M7.4 15.6 H16.6"/>
+  <path d="M5.2 19.6 H18.8"/>
+</svg>

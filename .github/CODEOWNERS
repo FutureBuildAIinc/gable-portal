@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: LicenseRef-OpenLBM-Docs-1.0
+# SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+#
+# Code owners for Gable Portal. GitHub requests a review from the matching
+# owner whenever a pull request touches one of these paths.
+#
+# !! PLACEHOLDER TEAMS !!
+# The handles below do NOT exist yet. Before opening this repository to outside
+# contributors a maintainer must:
+#   1. Create the teams under the @FutureBuildAIinc organisation
+#      (Settings -> Teams). Suggested: maintainers, frontend, legal — or
+#      collapse them all to `maintainers` if the split is premature.
+#   2. Give each team at least *write* access to this repository. GitHub
+#      silently ignores CODEOWNERS entries for teams without write access, so a
+#      typo or a missing grant looks exactly like "nothing happened".
+#   3. Replace every handle here with the real one.
+#   4. Enable "Require review from Code Owners" in the branch protection rule
+#      for the default branch, alongside the required "CI" status check.
+#
+# Syntax: last matching pattern wins, so the specific overrides at the bottom
+# take precedence over the catch-all at the top.
+
+# ---------------------------------------------------------------------------
+# Default owner for everything not matched below.
+# ---------------------------------------------------------------------------
+*                                   @FutureBuildAIinc/maintainers
+
+# ---------------------------------------------------------------------------
+# Application code
+# ---------------------------------------------------------------------------
+/src/                               @FutureBuildAIinc/frontend
+/server/                            @FutureBuildAIinc/frontend @FutureBuildAIinc/maintainers
+
+# Money. `money.ts` is the integer-cents boundary, `totals.ts` is the single
+# definition of every order total the board, the order page, the customer quote
+# and the AI all read, and `sim/pricing.ts` is the tier/contract/volume-break
+# engine. A wrong answer in any of these is a commercial error on a B2B order,
+# not a display bug — they get maintainer eyes regardless of how small the diff
+# looks.
+/src/core/lib/money.ts              @FutureBuildAIinc/maintainers
+/src/core/domain/totals.ts          @FutureBuildAIinc/maintainers
+/src/core/sim/pricing.ts            @FutureBuildAIinc/maintainers
+/src/core/actions/                  @FutureBuildAIinc/maintainers
+/src/core/domain/customer-quote.ts  @FutureBuildAIinc/maintainers
+
+# The framework-free boundary. `src/core/` must not import a UI framework;
+# a change that weakens `architecture.test.ts` weakens the one architectural
+# guarantee this codebase makes.
+/src/core/__tests__/                @FutureBuildAIinc/maintainers
+
+# The credential surface. The dealer's Anthropic key is written into
+# `.gablenow/secrets.json` by `admin-store.ts`, never read back out to a
+# client, and forwarded only by `claude-proxy.ts`. Both files are one mistake
+# away from leaking it.
+/server/admin-store.ts              @FutureBuildAIinc/maintainers
+/server/admin-api.ts                @FutureBuildAIinc/maintainers
+/server/claude-proxy.ts             @FutureBuildAIinc/maintainers
+
+# ---------------------------------------------------------------------------
+# CI and build plumbing
+# ---------------------------------------------------------------------------
+/.github/                           @FutureBuildAIinc/maintainers
+/vite.config.ts                     @FutureBuildAIinc/maintainers
+/vitest.config.ts                   @FutureBuildAIinc/maintainers
+/scripts/                           @FutureBuildAIinc/maintainers
+
+# ---------------------------------------------------------------------------
+# Licensing, legal, and policy — maintainer approval always required. These
+# files define what the project *is* legally; a bad merge here is far more
+# expensive to unwind than a bad merge in application code.
+# ---------------------------------------------------------------------------
+/LICENSE                            @FutureBuildAIinc/maintainers @FutureBuildAIinc/legal
+/LICENSE-MAP.md                     @FutureBuildAIinc/maintainers @FutureBuildAIinc/legal
+/LICENSES/                          @FutureBuildAIinc/maintainers @FutureBuildAIinc/legal
+/REUSE.toml                         @FutureBuildAIinc/maintainers @FutureBuildAIinc/legal
+/SECURITY.md                        @FutureBuildAIinc/maintainers
+/CODE_OF_CONDUCT.md                 @FutureBuildAIinc/maintainers
+/CONTRIBUTING.md                    @FutureBuildAIinc/maintainers

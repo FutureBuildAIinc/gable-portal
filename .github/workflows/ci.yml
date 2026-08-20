@@ -1,0 +1,207 @@
+# SPDX-License-Identifier: LicenseRef-OpenLBM-Docs-1.0
+# SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+
+name: CI
+
+on:
+  # `main` is the branch that exists today. `staging`, `master` and `community`
+  # are listed ahead of time because CONTRIBUTING-WITH-CLAUDE.md describes a
+  # `staging → master` promotion path that this repository has not been cut to
+  # yet — see ROADMAP.md, "Known problems we are not hiding". Listing them now
+  # means the gate works the moment those branches exist and nobody has to
+  # remember to edit this file first. Filters for branches that do not exist
+  # are inert.
+  push:
+    branches: [main, master, staging, community]
+  pull_request:
+    branches: [main, master, staging, community]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  # Pinned tool versions. Anything installed with `@latest` in CI makes the
+  # build non-deterministic, which is the opposite of what a gate is for.
+  #
+  # Node 22: package.json declares `>=20.19.0`, vite 6 wants ^18 || >=20 and
+  # vitest 4 wants ^20 || ^22 || >=24. 22 is the LTS line that satisfies all
+  # three, and it is what the maintainers develop on.
+  NODE_VERSION: "22"
+  REUSE_VERSION: "6.2.0"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Merge gates. These must be green for a PR to land.
+  # ---------------------------------------------------------------------------
+  # The four steps below are exactly the four gates CLAUDE.md requires before a
+  # commit — typecheck, lint, test, build — in that order, cheapest first, so a
+  # contributor who forgot `npm run check` finds out in 30 seconds rather than
+  # after a full Vite build.
+  #
+  # NOT here, deliberately: `npm run a11y`, `npm run security`, `npm run e2e`,
+  # `npm run contrast`, and `npm run predeploy`. Each of those boots a real
+  # server and drives it with a real browser (Playwright, or the locally
+  # installed Chrome for the guide capture). They are genuine gates and they
+  # have each caught a real defect, but they need a browser download and a live
+  # port, and a flaky browser launch failing an unrelated PR trains people to
+  # ignore CI. They run locally and before a release — see CONTRIBUTING.md.
+  # If they are ever added here, add them as a separate `continue-on-error`
+  # job, not as steps in this one.
+  app:
+    name: App
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # `npm ci` and not `npm install`: it installs exactly the lockfile and
+      # fails if package.json and package-lock.json have drifted, which is a
+      # thing worth failing on.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      # `npm run lint` is `biome check .` WITHOUT `--write`. `npm run check`
+      # (the local convenience script) writes fixes, which in CI would mean a
+      # job that silently repairs a problem and reports success.
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (with coverage)
+        run: npm run test:coverage
+
+      # REPORTING ONLY — there is deliberately NO coverage threshold, here or
+      # anywhere else in this workflow.
+      #
+      # The measured baseline when this workflow landed was 59.1% of statements
+      # overall, and the number is deeply uneven on purpose. `src/core/` — the
+      # domain, pricing, totals, stage machine and stores, everything that
+      # touches money — sits at 79-98% by directory, and the specific money
+      # modules (money.ts, totals.ts, selectors/order.ts, selectors/ar.ts,
+      # domain/customer-quote.ts) are at 100% statements. `src/ui/pages/` is
+      # near zero, because those components render numbers that are already
+      # asserted in core.
+      #
+      # A single repo-wide percentage would therefore be the wrong instrument
+      # even if a gate were wanted: it would push contributors to write shallow
+      # render tests for pages instead of real assertions about money, which is
+      # the opposite of what this codebase needs.
+      #
+      # If a threshold is ever introduced it should be scoped to `src/core/`
+      # and `server/`, and it should ratchet upward from a measured baseline
+      # rather than being imposed as a round number.
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "## Coverage"
+            echo ""
+            echo "Reporting only — no threshold is enforced. See the comment in .github/workflows/ci.yml."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+              const t = require('./coverage/coverage-summary.json').total;
+              console.log('| Metric | % | Covered / Total |');
+              console.log('|---|---|---|');
+              for (const [k, v] of Object.entries(t)) {
+                if (k === 'branchesTrue') continue;
+                console.log('| ' + k + ' | ' + v.pct + '% | ' + v.covered + ' / ' + v.total + ' |');
+              }
+            " >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No coverage report was produced (the test step did not complete)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # `tsc --noEmit` does not exercise PostCSS/Tailwind or the Vite bundler,
+      # and it does not build the two-entry-point rollup config that keeps admin
+      # code out of the contractor bundle. Without this step a change that type
+      # checks but cannot be bundled would reach a deploy before anyone noticed.
+      #
+      # `npm run build` is `tsc -b && vite build`, so it re-runs the type check
+      # as part of itself. That duplication is deliberate: the standalone step
+      # above fails faster and points at the real problem.
+      - name: Build
+        run: npm run build
+
+      # The production host is a separate esbuild bundle that `npm run build`
+      # does not produce, and it is what `npm run serve` and the deploy path
+      # actually run. It broke once by depending on an undeclared transitive
+      # esbuild; `esbuild` is now a direct devDependency and this step is what
+      # keeps that honest.
+      - name: Build server
+        run: npm run build:server
+
+  license:
+    name: License (REUSE)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install reuse (pinned)
+        run: pipx install "reuse==${REUSE_VERSION}"
+
+      # Advisory: the full human-readable report, so a failure is diagnosable
+      # straight from the log without re-running anything locally. The pass/fail
+      # decision belongs to the gate step below.
+      - name: reuse lint (report)
+        run: reuse lint || true
+
+      # The gate. See .github/scripts/reuse_gate.py for which findings are hard
+      # failures and why the single exception exists.
+      - name: REUSE gate
+        run: python3 .github/scripts/reuse_gate.py
+
+  # ---------------------------------------------------------------------------
+  # A single required check for branch protection, so the protection rule does
+  # not have to be edited every time a job is added or renamed. Point the
+  # default branch's protection rule at "CI" and nothing else.
+  #
+  # `if: always()` so this job still runs (and fails) when a dependency fails or
+  # is cancelled — without it a failed `app` job would leave `CI` skipped, and a
+  # skipped required check reads as "not failing" to branch protection.
+  # ---------------------------------------------------------------------------
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [app, license]
+
+    steps:
+      - name: Gate
+        run: |
+          echo "app:     ${{ needs.app.result }}"
+          echo "license: ${{ needs.license.result }}"
+          if [ "${{ needs.app.result }}" != "success" ] \
+            || [ "${{ needs.license.result }}" != "success" ]; then
+            echo "::error::a required job did not succeed"
+            exit 1
+          fi
+          echo "All required jobs succeeded."

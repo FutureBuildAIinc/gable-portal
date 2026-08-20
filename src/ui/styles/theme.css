@@ -1,0 +1,219 @@
+/*
+ * SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
+ * SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+ */
+@import "tailwindcss";
+
+/**
+ * "Daylight Pro" — light-first, high-contrast.
+ *
+ * Contractors use this in trucks and on sites in direct sun, so the default is
+ * a bright, high-contrast surface rather than the dark neon of the old
+ * prototype. Dark mode is a first-class toggle, not an afterthought.
+ *
+ * Three token layers:
+ * Every signal colour below is MEASURED, in a real renderer, to clear 4.5:1
+ * in all three ways these tokens get used: as text on a card, as text on the
+ * 14%-tint chip of its own hue, and as the fill under white pill text. One
+ * value covers all three because darkening a token also lightens the tint
+ * derived from it, so both directions improve together.
+ *
+ * They are deeper than a designer would pick unprompted, and that is the
+ * trade this product exists to make: an earlier, prettier palette failed AA on
+ * nine screens, which is indefensible when the stated premise is reading a
+ * phone in direct sun with gloves on. `npm run a11y` is the check, and it
+ * fails the build on any serious violation.
+ *
+ *   1. Platform  (--surface, --text, stage colors) — never dealer-overridable,
+ *      so status semantics read the same across every dealer.
+ *   2. Dealer    (--brand-*) — the supplier's brand, set at runtime.
+ *   3. Contractor(--cbrand-*) — used ONLY on customer-facing quote pages,
+ *      where the contractor's brand must win, not the dealer's.
+ */
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-card: 0.75rem;
+  --radius-sheet: 1.25rem;
+}
+
+:root {
+  color-scheme: light;
+
+  /* Platform surfaces */
+  --surface: oklch(100% 0 0);
+  --surface-2: oklch(98% 0.004 85);
+  --surface-3: oklch(95.5% 0.007 85);
+  --surface-inset: oklch(97% 0.006 85);
+
+  --text: oklch(21% 0.015 70);
+  /* Three steps that are actually three steps: 17.6 / 7.4 / 5.5 against
+     --surface. Muted and subtle sat at 50% and 52% — two points apart, a
+     hierarchy nobody could see. Raising subtle for AA is what collapsed it, so
+     muted moves down rather than subtle moving up: subtle carries the 11px
+     chip text and needs the contrast it has. Measured in a browser, not
+     computed — npm run contrast. */
+  --text-muted: oklch(45% 0.015 70);
+  --text-subtle: oklch(52% 0.012 70);
+
+  --border: oklch(90% 0.008 80);
+  --border-strong: oklch(82% 0.012 80);
+
+  /* Dealer brand — overwritten at runtime from branding config.
+     Gable Supply's ochre. Chosen over the default blue for two reasons that
+     are not taste: it is the colour of milled softwood, so it belongs to this
+     trade rather than to software; and at 52% lightness it clears 4.5:1 BOTH
+     as text on white (5.72) and as a fill under white text — an amber bright
+     enough to feel like hi-vis measures 3.76 and fails both ways.
+
+     The neutrals were rewarmed from hue 260 to 70 to sit with it. Lightness is
+     untouched, so the measured three-step text hierarchy is intact:
+     17.75 / 7.45 / 5.50 against --surface. */
+  --brand: oklch(52% 0.14 62);
+  --brand-hover: oklch(45% 0.14 62);
+  --brand-on: oklch(100% 0 0);
+  --brand-tint: color-mix(in oklch, var(--brand), white 90%);
+
+  /* Contractor brand — customer quote page only. */
+  --cbrand: var(--brand);
+  --cbrand-on: var(--brand-on);
+
+  /* Stage colors: platform-owned so a job in "Order" looks the same everywhere. */
+  --stage-plan: oklch(52% 0.02 260);
+  --stage-quote: oklch(53.5% 0.14 70);
+  --stage-order: oklch(51.5% 0.16 250);
+  --stage-invoice: oklch(50% 0.15 155);
+
+  /* Status semantics */
+  /**
+   * Text that sits ON a filled signal colour (a status pill, a reached
+   * timeline step). It flips with the theme because the signal tokens do:
+   * they are DARK in light mode and LIGHT in dark mode, so a fixed white
+   * would fail one of the two. It measured 2.0-3.2:1 in dark mode before this
+   * existed.
+   */
+  --on-signal: oklch(100% 0 0);
+
+  --success: oklch(49% 0.15 155);
+  --warning: oklch(52% 0.15 75);
+  --danger: oklch(53% 0.2 25);
+  --info: oklch(51% 0.14 240);
+
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.05), 0 1px 3px oklch(0% 0 0 / 0.06);
+  --shadow-lifted: 0 8px 24px oklch(0% 0 0 / 0.12), 0 2px 6px oklch(0% 0 0 / 0.08);
+  --shadow-sheet: 0 -4px 24px oklch(0% 0 0 / 0.12);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface: oklch(17% 0.01 70);
+  --surface-2: oklch(21% 0.012 70);
+  --surface-3: oklch(25% 0.014 70);
+  --surface-inset: oklch(14% 0.01 70);
+
+  --text: oklch(97% 0.003 70);
+  --text-muted: oklch(72% 0.012 70);
+  --text-subtle: oklch(62% 0.012 70);
+
+  --border: oklch(30% 0.014 70);
+  --border-strong: oklch(38% 0.016 70);
+
+  --brand: oklch(74% 0.15 65);
+  --brand-hover: oklch(80% 0.14 65);
+  --brand-on: oklch(17% 0.01 70);
+  --brand-tint: color-mix(in oklch, var(--brand), black 78%);
+
+  --stage-plan: oklch(66% 0.02 260);
+  --stage-quote: oklch(78% 0.15 75);
+  --stage-order: oklch(68% 0.16 250);
+  --stage-invoice: oklch(72% 0.15 155);
+
+  --on-signal: oklch(17% 0.01 70);
+
+  --success: oklch(70% 0.15 155);
+  --warning: oklch(78% 0.15 75);
+  --danger: oklch(68% 0.19 25);
+  --info: oklch(70% 0.14 240);
+
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.3), 0 1px 3px oklch(0% 0 0 / 0.35);
+  --shadow-lifted: 0 8px 24px oklch(0% 0 0 / 0.5), 0 2px 6px oklch(0% 0 0 / 0.4);
+  --shadow-sheet: 0 -4px 24px oklch(0% 0 0 / 0.5);
+}
+
+/* Make the tokens available as Tailwind utilities (bg-surface, text-muted, …). */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-inset: var(--surface-inset);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-on: var(--brand-on);
+  --color-brand-tint: var(--brand-tint);
+  --color-stage-plan: var(--stage-plan);
+  --color-stage-quote: var(--stage-quote);
+  --color-stage-order: var(--stage-order);
+  --color-stage-invoice: var(--stage-invoice);
+  --color-on-signal: var(--on-signal);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--surface-2);
+    color: var(--text);
+    font-family: var(--font-sans);
+    /* Money and quantities must never shift width as they change. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  /* Touch targets: 44px minimum, per the mobile-first mandate. */
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* SKUs, PO/SO numbers — mono, slightly tightened. */
+@utility text-data {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: -0.01em;
+}

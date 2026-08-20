@@ -1,0 +1,109 @@
+[
+    {
+        "id": 1,
+        "name": "Weyerhaeuser",
+        "description": "Leading manufacturer of wood products and building materials.",
+        "logoUrl": "/images/brands/weyerhaeuser.png",
+        "website": "https://www.weyerhaeuser.com",
+        "isActive": true,
+        "productCount": 5
+    },
+    {
+        "id": 2,
+        "name": "Georgia-Pacific",
+        "description": "Manufacturer of building products, tissue, and packaging.",
+        "logoUrl": "/images/brands/gp.png",
+        "website": "https://www.gp.com",
+        "isActive": true,
+        "productCount": 2
+    },
+    {
+        "id": 3,
+        "name": "LP Building Solutions",
+        "description": "Engineered wood building products manufacturer.",
+        "logoUrl": "/images/brands/lp.png",
+        "website": "https://www.lpcorp.com",
+        "isActive": true,
+        "productCount": 1
+    },
+    {
+        "id": 4,
+        "name": "YellaWood",
+        "description": "Pressure-treated wood products for residential and commercial projects.",
+        "logoUrl": "/images/brands/yellawood.png",
+        "website": "https://www.yellawood.com",
+        "isActive": true,
+        "productCount": 4
+    },
+    {
+        "id": 5,
+        "name": "Arauco",
+        "description": "Global manufacturer of wood panels, molding, and trim.",
+        "logoUrl": "",
+        "website": "https://www.arauco.com",
+        "isActive": true,
+        "productCount": 2
+    },
+    {
+        "id": 6,
+        "name": "GRK",
+        "description": "Premium fastener systems for construction professionals.",
+        "logoUrl": "",
+        "website": "https://www.grkfasteners.com",
+        "isActive": true,
+        "productCount": 1
+    },
+    {
+        "id": 7,
+        "name": "Simpson Strong-Tie",
+        "description": "Structural connectors, fasteners, and anchoring systems.",
+        "logoUrl": "/images/brands/simpson.png",
+        "website": "https://www.strongtie.com",
+        "isActive": true,
+        "productCount": 1
+    },
+    {
+        "id": 8,
+        "name": "Owens Corning",
+        "description": "Insulation, roofing, and fiberglass composites manufacturer.",
+        "logoUrl": "/images/brands/owenscorning.png",
+        "website": "https://www.owenscorning.com",
+        "isActive": true,
+        "productCount": 2
+    },
+    {
+        "id": 9,
+        "name": "GAF",
+        "description": "North America's largest roofing manufacturer.",
+        "logoUrl": "/images/brands/gaf.png",
+        "website": "https://www.gaf.com",
+        "isActive": true,
+        "productCount": 2
+    },
+    {
+        "id": 10,
+        "name": "Trex",
+        "description": "Composite decking and railing products.",
+        "logoUrl": "/images/brands/trex.png",
+        "website": "https://www.trex.com",
+        "isActive": true,
+        "productCount": 2
+    },
+    {
+        "id": 11,
+        "name": "Quikrete",
+        "description": "Packaged concrete and cement mixes for construction and repair.",
+        "logoUrl": "/images/brands/quikrete.png",
+        "website": "https://www.quikrete.com",
+        "isActive": true,
+        "productCount": 1
+    },
+    {
+        "id": 12,
+        "name": "Generic",
+        "description": "Standard commodity building materials.",
+        "logoUrl": "",
+        "isActive": true,
+        "productCount": 1
+    }
+]
