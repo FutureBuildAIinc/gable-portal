@@ -79,7 +79,7 @@ describe('what the customer sees', () => {
 
     // Composite decking is something a homeowner chose.
     expect(selections.length).toBeGreaterThan(0);
-    expect(selections.some((l) => l.name.toLowerCase().includes('trex'))).toBe(true);
+    expect(selections.some((l) => l.name.toLowerCase().includes('everdeck'))).toBe(true);
     // And the framing order is all commodity — nobody picks a joist.
     expect(build(MILLER_FRAME).lines.every((l) => l.presentation === 'commodity')).toBe(true);
     expect(commodities.length + selections.length).toBe(quote.lines.length);
@@ -112,7 +112,7 @@ describe('what the customer sees', () => {
     const products = catalogStore.get().products;
     const bySku = (sku: string) => products.find((p) => p.sku === sku);
 
-    expect(bySku('DECK-TREX-CLM-12')?.presentation).toBe('selection');
+    expect(bySku('DECK-EVRD-CLM-12')?.presentation).toBe('selection');
     expect(bySku('LBR-2X4-8-DF')?.presentation).toBe('commodity');
     expect(bySku('PLY-OSB-7/16-4X8')?.presentation).toBe('commodity');
     // Roofing felt mentions 'roofing' but is buried — buried must win.

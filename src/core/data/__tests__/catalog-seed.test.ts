@@ -65,9 +65,9 @@ describe('manufactured availability', () => {
   });
 
   it('honours explicit stock counts from the source data', () => {
-    // Source declares inStock: 320 for the Trex decking.
-    const trex = seedProducts(7).find((p) => p.sku === 'DECK-TREX-CLM-12');
-    const yard = trex?.stock.find((s) => s.locationId === 'loc_yard');
+    // Source declares inStock: 320 for the EverDeck Composites decking.
+    const everdeck = seedProducts(7).find((p) => p.sku === 'DECK-EVRD-CLM-12');
+    const yard = everdeck?.stock.find((s) => s.locationId === 'loc_yard');
     expect(yard?.onHand).toBe(320);
   });
 

@@ -92,7 +92,7 @@ describe('board flow', () => {
 
     expect(decision.ok).toBe(false);
     if (!decision.ok) {
-      expect(decision.error).toContain('Trex Transcend rail kit');
+      expect(decision.error).toContain('EverDeck Signature rail kit');
       expect(decision.error).toContain('quote desk');
     }
 

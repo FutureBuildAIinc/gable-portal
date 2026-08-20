@@ -294,22 +294,22 @@ describe('searchProducts', () => {
   const CATALOG = [
     product({ sku: 'LBR-2X4-8-DF', name: "2x4x8' Douglas Fir", tags: ['framing', 'stud'] }),
     product({ sku: 'PT-4X4-8', name: "4x4x8' Pressure Treated Post", tags: ['deck', 'post'] }),
-    product({ sku: 'DECK-TREX-16', name: 'Trex Decking 16ft', tags: ['deck', 'composite'] }),
+    product({ sku: 'DECK-EVRD-16', name: 'EverDeck Decking 16ft', tags: ['deck', 'composite'] }),
   ];
 
   it('requires every term to match, not any', () => {
-    // "deck trex" must not return the pressure-treated post just because it is
+    // "deck everdeck" must not return the pressure-treated post just because it is
     // tagged deck. An add-items search that returns near-misses gets a wrong
     // SKU onto an order.
-    const hits = searchProducts(CATALOG, 'deck trex');
-    expect(hits.map((p) => p.sku)).toEqual(['DECK-TREX-16']);
+    const hits = searchProducts(CATALOG, 'deck everdeck');
+    expect(hits.map((p) => p.sku)).toEqual(['DECK-EVRD-16']);
   });
 
   it('ranks a SKU prefix above a name or tag mention', () => {
     const hits = searchProducts(CATALOG, 'deck');
-    // DECK-TREX-16 starts with the term (score 3); PT-4X4-8 only carries the
+    // DECK-EVRD-16 starts with the term (score 3); PT-4X4-8 only carries the
     // tag (score 1). A contractor typing a SKU wants that SKU.
-    expect(hits[0]?.sku).toBe('DECK-TREX-16');
+    expect(hits[0]?.sku).toBe('DECK-EVRD-16');
     expect(hits.map((p) => p.sku)).toContain('PT-4X4-8');
   });
 

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80" role="img" aria-label="SummitLine Roofing">
+  <!--
+  SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
+  SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+
+  SummitLine Roofing is a FICTIONAL manufacturer invented for the demo dataset. It is not a
+  real company and this mark imitates no real trademark.
+  -->
+  <rect width="320" height="80" rx="8" fill="#F4F4F5"/>
+  <rect x="12" y="14" width="52" height="52" rx="10" fill="#3B3B58"/>
+  <text x="38" y="49" font-family="Inter, Helvetica, Arial, sans-serif" font-size="22"
+        font-weight="700" fill="#FFFFFF" text-anchor="middle">SL</text>
+  <text x="78" y="46" font-family="Inter, Helvetica, Arial, sans-serif" font-size="17"
+        font-weight="600" fill="#18181B">SummitLine Roofing</text>
+  <text x="78" y="62" font-family="Inter, Helvetica, Arial, sans-serif" font-size="10"
+        fill="#71717A">Fictional brand — demo data only</text>
+</svg>

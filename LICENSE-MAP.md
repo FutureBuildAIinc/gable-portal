@@ -104,19 +104,26 @@ the product. `npm run predeploy` is a documented step of shipping it, and an
 operator can and should point the security smokes at their own deployment. They
 ship with the Licensed Work and are licensed with it.
 
-## Third-party marks in the demo catalog
+## No third-party marks in the demo catalog
 
-`public/images/brands/` contains nine images that depict the marks of real
-manufacturers (Weyerhaeuser, Georgia-Pacific, LP, YellaWood, Arauco, GAF, Owens
-Corning, Trex, Simpson Strong-Tie, Quikrete). They are **AI-generated
-placeholders**, not the manufacturers' official artwork, and they exist so the
-demo catalog reads as a real building-materials catalog rather than a grid of
-grey boxes.
+**Every manufacturer in this repository's demo data is fictional.** There are no
+real company names, no real trademarks and no real URLs anywhere in the fixture.
 
-The SPDX header on each claims FutureBuild copyright in *the generated file*. It
-makes no claim whatsoever to the depicted marks, which belong to their owners.
-Neither the Community Source license nor this map grants you any right in them.
-They are tracked for replacement — see
+`public/images/brands/` holds nine generated SVG wordmarks for invented
+manufacturers — Cascade Timber Works, Pinehurst Mills, Northbeam Engineered
+Wood, SunGuard Treated Lumber, IronOak Connectors, ThermaLoft Insulation,
+SummitLine Roofing, EverDeck Composites and StoneSet Concrete. Each carries the
+line "Fictional brand — demo data only" in the artwork, and every `website` in
+`src/core/data/brands.json` uses the RFC 2606 reserved `.example` TLD, which is
+guaranteed never to resolve.
+
+This is a deliberate constraint, not an accident of the sample data. An earlier
+revision shipped AI-generated imitations of nine live manufacturer marks paired
+with those companies' real names and websites; it was replaced before this
+repository was published. **Contributions must not introduce a real
+manufacturer's name, mark or URL into the demo fixture** — depicting a mark you
+do not own, next to that company's real identity, is a trademark exposure
+whether the artwork is copied or synthesised. See
 [ROADMAP.md](ROADMAP.md) → "Known problems we are not hiding".
 
 ## Trademark

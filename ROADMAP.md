@@ -79,19 +79,27 @@ Consequences, all current:
 
 Do not deploy this with real data. See [SECURITY.md](SECURITY.md).
 
-### 3. `public/images/brands/` depicts trademarks we do not own
+### 3. Brand assets — RESOLVED, recorded so it is not reintroduced
 
-Nine images depict the marks of Weyerhaeuser, Georgia-Pacific, LP, YellaWood,
-Arauco, GAF, Owens Corning, Trex, Simpson Strong-Tie, and Quikrete. They are
-**AI-generated placeholders**, not the manufacturers' artwork, and they exist so
-the demo catalog reads like a catalog. They are also 1024×1024 JPEGs with a
-`.png` extension, which is its own small lie.
+This repository previously shipped nine AI-generated imitations of live
+trademarks — Weyerhaeuser, Georgia-Pacific, LP, YellaWood, GAF, Owens Corning,
+Trex, Simpson Strong-Tie and Quikrete — wired into `brands.json` alongside each
+company's real name, description and website. That is a trademark exposure
+independent of copyright: a confusingly similar mark presented as a company's
+own, next to their real URL, with nothing telling a visitor it is synthetic.
 
-Before this repository is promoted anywhere public-facing, they should be
-replaced with generic imagery or removed and the brand cards rendered as
-initials. This is tracked here rather than quietly ignored because a
-source-available repository shipping imitations of live trademarks is a real
-exposure, not a cosmetic one. See [LICENSE-MAP.md](LICENSE-MAP.md).
+**It was fixed before the repository was ever pushed**, so the imitations are
+not in public git history. Every manufacturer in the demo catalog is now
+fictional — Cascade Timber Works, Pinehurst Mills, Northbeam Engineered Wood,
+SunGuard Treated Lumber, Meridian Panel Co., Ironclad Fasteners, IronOak
+Connectors, ThermaLoft Insulation, SummitLine Roofing, EverDeck Composites and
+StoneSet Concrete. Logos are generated SVG wordmarks that carry the line
+"Fictional brand — demo data only" in the artwork itself, and every website uses
+the RFC 2606 reserved `.example` TLD, which can never resolve.
+
+**Do not reintroduce a real manufacturer's name, mark or URL into the demo
+data.** The rest of the fixture is fabricated for the same reason; the brand
+layer was the one place it was not.
 
 ### 4. The branch model in the docs does not match the repository
 

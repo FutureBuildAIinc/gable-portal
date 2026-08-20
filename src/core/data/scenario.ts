@@ -165,8 +165,8 @@ export function buildScenario(ctx: Ctx): ScenarioData {
     inDays: 16,
     sortOrder: 1,
   });
-  line(millerDeck.id, 'DECK-TREX-CLM-12', 42);
-  special(millerDeck.id, 'SO-TREX-PEBBLE', 'Trex Transcend rail kit — Pebble Grey', 3);
+  line(millerDeck.id, 'DECK-EVRD-CLM-12', 42);
+  special(millerDeck.id, 'SO-EVRD-PEBBLE', 'EverDeck Signature rail kit — Pebble Grey', 3);
 
   // --- Anderson: sitting at the quote desk ---------------------------------
   const anderson = project('prj_anderson', 'Anderson Pole Barn', 'Ray Anderson', 'Milbank', 30);
