@@ -4,7 +4,6 @@
 name: CI
 
 on:
-  # `main` is the branch that exists today. `staging`, `master` and `community`
   # are listed ahead of time because CONTRIBUTING-WITH-CLAUDE.md describes a
   # `staging → master` promotion path that this repository has not been cut to
   # yet — see ROADMAP.md, "Known problems we are not hiding". Listing them now
@@ -12,9 +11,9 @@ on:
   # remember to edit this file first. Filters for branches that do not exist
   # are inert.
   push:
-    branches: [main, master, staging, community]
+    branches: [main, staging]
   pull_request:
-    branches: [main, master, staging, community]
+    branches: [main, staging]
   workflow_dispatch:
 
 permissions:
