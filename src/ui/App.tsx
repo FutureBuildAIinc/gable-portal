@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
 // SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
 import { boot } from '@core/boot';
+import { initGableConnection } from '@core/gable/connect';
+import { isGableWired } from '@core/gable/runtime';
+import { gableStore } from '@core/gable/store';
 import { clearPersistedState } from '@core/stores/persistence';
 import { sessionStore } from '@core/stores/root';
 import { ActivitySheet } from '@ui/components/ActivitySheet';
 import { DemoDirector } from '@ui/components/DemoDirector';
 import { AssistantSheet } from '@ui/components/assistant/AssistantSheet';
+import { SignInPage } from '@ui/components/gable/SignInPage';
 import { useStore } from '@ui/hooks/useStore';
 import { PortalLayout, type PortalTab } from '@ui/layouts/PortalLayout';
 import { BoardPage } from '@ui/pages/BoardPage';
@@ -17,7 +21,7 @@ import { PayPage } from '@ui/pages/PayPage';
 import { ProjectPage } from '@ui/pages/ProjectPage';
 import { QuoteStudioPage } from '@ui/pages/QuoteStudioPage';
 import { TeamPage } from '@ui/pages/TeamPage';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
   Navigate,
   Route,
@@ -39,28 +43,73 @@ try {
 }
 
 /**
+ * Establishes the ERP link once, for the whole app.
+ *
+ * Outside the router on purpose: a reload onto `/orders/:id` has to connect the
+ * same way a reload onto `/` does, and hanging this off a route would reconnect
+ * on every navigation.
+ *
+ * `boot()` above has already run and seeded the simulator. That ordering is
+ * deliberate — the app is usable in the frame before the network answers, and a
+ * `gable` that never answers degrades to a sign-in prompt rather than a blank
+ * screen.
+ */
+function useGableConnection() {
+  useEffect(() => {
+    void initGableConnection();
+  }, []);
+}
+
+/**
+ * The sign-in gate.
+ *
+ * Only ever renders on a wired deployment: standalone has nothing to sign in
+ * to, so the whole notion of being signed out does not exist there. `'error'`
+ * deliberately falls through to the app rather than blocking it — an
+ * unreachable ERP should leave the contractor looking at the board with an
+ * honest "Supplier unreachable" badge, not at a wall.
+ */
+function GableGate({ children }: { children: ReactNode }) {
+  const status = useStore(gableStore, (state) => state.status);
+  if (isGableWired() && status === 'signed-out') return <SignInPage />;
+  return <>{children}</>;
+}
+
+/**
  * Real routes rather than view state, because on a phone the hardware back
  * button has to work: opening an order and pressing back must return to the
  * board, not exit the app. It also gives M5's customer share link (/q/:token)
  * somewhere to live.
  */
 export function App() {
+  useGableConnection();
+
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Shell />} />
-        <Route path="/orders/:orderId" element={<Shell />} />
-        <Route path="/orders/:orderId/quote" element={<Shell />} />
-        <Route path="/orders/:orderId/tracking" element={<Shell />} />
-        {/* Public: the homeowner's link. No portal chrome, no auth. */}
+        <Route path="/" element={<GatedShell />} />
+        <Route path="/orders/:orderId" element={<GatedShell />} />
+        <Route path="/orders/:orderId/quote" element={<GatedShell />} />
+        <Route path="/orders/:orderId/tracking" element={<GatedShell />} />
+        {/* Public: the homeowner's link. No portal chrome, no auth — and
+            deliberately NOT behind the ERP gate: the person opening it is the
+            contractor's customer, who has no account with the dealer at all. */}
         <Route path="/q/:token" element={<PublicQuote />} />
-        <Route path="/projects/:projectId" element={<Shell />} />
-        <Route path="/catalog" element={<Shell />} />
-        <Route path="/pay" element={<Shell />} />
-        <Route path="/more" element={<Shell />} />
+        <Route path="/projects/:projectId" element={<GatedShell />} />
+        <Route path="/catalog" element={<GatedShell />} />
+        <Route path="/pay" element={<GatedShell />} />
+        <Route path="/more" element={<GatedShell />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
+  );
+}
+
+function GatedShell() {
+  return (
+    <GableGate>
+      <Shell />
+    </GableGate>
   );
 }
 

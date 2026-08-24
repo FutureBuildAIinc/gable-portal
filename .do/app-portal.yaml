@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: LicenseRef-OpenLBM-Docs-1.0
+# SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+#
+# DigitalOcean App Platform spec — EXAMPLE portal deployment.
+#
+# A self-host reference, not a live environment. Replace every placeholder
+# (repo, domain, GABLE_API_URL) before applying.
+#
+# Apply with: doctl apps create --spec .do/app-portal.yaml   (first time)
+#             doctl apps update <app-id> --spec .do/app-portal.yaml
+#
+# ---------------------------------------------------------------------------
+# What this deploys, and what it deliberately does not
+# ---------------------------------------------------------------------------
+# ONE service: a Node process that serves the built SPA and proxies
+# /api/portal/* to a gable ERP. There is no database here — the portal has no
+# persistence of its own. Board state lives in the contractor's browser
+# (localStorage), and everything real lives in gable.
+#
+# Two ways to run it, both supported:
+#
+#   GABLE_API_URL set    → wired. Contractors sign in against gable, browse
+#                          gable's catalog at their own pricing, and place
+#                          orders that land in gable's `orders` table.
+#   GABLE_API_URL unset  → standalone. The built-in simulator plays the
+#                          supplier and the UI says "Local simulation" on every
+#                          screen. This is a legitimate demo mode, not a
+#                          degraded one — but do NOT put a standalone
+#                          deployment in front of real contractors: the prices
+#                          are invented.
+name: gable-portal
+region: nyc
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+
+domains:
+  - domain: portal.example.com
+    type: PRIMARY
+
+services:
+  - name: portal
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      repo: your-org/gable-portal
+      branch: main
+      deploy_on_push: true
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8080
+
+    health_check:
+      # Static, and does not touch the ERP — see the Dockerfile comment. A gable
+      # outage must not also take the portal out of App Platform's rotation.
+      http_path: /healthz
+      initial_delay_seconds: 10
+      period_seconds: 30
+      failure_threshold: 3
+
+    routes:
+      # preserve_path_prefix keeps the original path when proxying to the
+      # container. Without it App Platform strips the matched prefix and
+      # /api/portal/v1/catalog arrives as /v1/catalog — the proxy then forwards
+      # a truncated path and gable 404s every call. The failure is silent from
+      # the outside: the app loads, the badge says "Supplier unreachable", and
+      # nothing in either log says why.
+      - path: /
+        preserve_path_prefix: true
+
+    envs:
+      - key: PORT
+        value: "8080"
+
+      # HOST is intentionally NOT set. server/serve.ts defaults to 0.0.0.0
+      # because App Platform's router and health checker live outside the
+      # container's network namespace; a 127.0.0.1 bind deploys "successfully"
+      # and receives no traffic at all.
+
+      # ---- The ERP link ---------------------------------------------------
+      # The base URL of your gable backend, WITHOUT a path. The portal appends
+      # /api/portal/v1/... itself.
+      #
+      # Scope RUN_TIME, never BUILD_TIME: the image must be promotable from
+      # staging to production without a rebuild, and the browser must never
+      # learn where the ERP is. Nothing VITE_-prefixed appears anywhere in this
+      # file for the same reason — Vite inlines VITE_* into the client bundle.
+      #
+      # If gable runs as another service in this same app, use its private URL:
+      #   value: ${backend.PRIVATE_URL}
+      - key: GABLE_API_URL
+        value: https://erp.example.com
+        scope: RUN_TIME
+
+      # GABLE_ALLOW_INSECURE_COOKIES is intentionally absent.
+      #
+      # It strips `Secure` from gable's session cookie on the way back through
+      # the proxy, which is required only when the PORTAL is served over plain
+      # HTTP — a local `npm run dev`, or a container smoke-tested before a TLS
+      # terminator is in front of it. App Platform terminates TLS, so setting
+      # it here would put a session cookie on the wire in clear text for no
+      # benefit whatsoever.
+
+      # ---- The assistant (optional) ---------------------------------------
+      # Deliberately NOT VITE_-prefixed: the key is read by the Node host and
+      # proxied server-side, so it never reaches the browser. Set it as an
+      # encrypted secret out of band, never inline here:
+      #   doctl apps update <app-id> --spec ... then add via the dashboard
+      # - key: ANTHROPIC_API_KEY
+      #   scope: RUN_TIME
+      #   type: SECRET
+
+      # ---- The dealer admin console (optional) -----------------------------
+      # Absent = the console refuses every request. That is the only safe
+      # default for a surface that accepts an API key, and it is enforced in
+      # server/admin-api.ts rather than here.
+      #
+      # Note that the console's storage (.gablenow/) is EPHEMERAL in a
+      # container: branding configured through it does not survive a deploy.
+      # - key: GABLENOW_ADMIN_TOKEN
+      #   scope: RUN_TIME
+      #   type: SECRET
+
+# ---------------------------------------------------------------------------
+# Not verified here
+# ---------------------------------------------------------------------------
+# This spec has been reviewed against gable/.do/app-demo.yaml and against the
+# behaviour of the Dockerfile and server/serve.ts, but it has NOT been applied
+# to a live App Platform account — nobody has run `doctl apps create` with it.
+# The routing, health-check and env-scope choices above are reasoned, not
+# observed. Treat the first deploy as the test.

@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: LicenseRef-OpenLBM-Docs-1.0
+# SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+
+# Build outputs — regenerated inside the image, and copying a host build in
+# would let a stale dist/ ship instead of the one this Dockerfile produced.
+dist
+dist-server
+coverage
+node_modules
+tsconfig.tsbuildinfo
+
+# Secrets. `.gablenow/` holds the dealer's Anthropic key, written by the admin
+# console; `.env` holds whatever the developer put there. Neither has ever
+# belonged in an image, and the dev server already denies both over HTTP
+# (vite.config.ts `server.fs.deny`) for exactly the same reason.
+.env
+.env.*
+.gablenow
+
+.git
+.github
+docs
+*.md

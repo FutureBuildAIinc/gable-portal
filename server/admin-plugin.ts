@@ -6,6 +6,7 @@ import { brandingCss } from '../src/core/domain/config';
 import { createAdminHandler } from './admin-api';
 import { readConfig } from './admin-store';
 import { mountApiBehindHostCheck } from './dev-middleware';
+import { PORTAL_API_PREFIX, RUNTIME_GLOBAL, createGableProxy } from './gable-proxy';
 
 /**
  * Serves the dealer's runtime configuration, and mounts the admin API.
@@ -23,6 +24,13 @@ import { mountApiBehindHostCheck } from './dev-middleware';
 export interface AdminPluginOptions {
   adminToken: string | undefined;
   allowRemote: boolean;
+  /**
+   * The ERP to proxy to in dev. Unset = standalone, which is the default and
+   * what keeps `npm run dev` working with nothing else running.
+   */
+  gableApiUrl?: string | undefined;
+  /** See `GableProxyOptions.allowInsecureCookies`. Dev is http, so usually true. */
+  gableAllowInsecureCookies?: boolean;
 }
 
 /** The marker the HTML carries; the client reads it before first paint. */
@@ -45,6 +53,11 @@ export function renderConfigTags(config: ReturnType<typeof readConfig>): string 
 }
 
 export function adminPlugin(options: AdminPluginOptions): Plugin {
+  const gable = createGableProxy({
+    apiUrl: options.gableApiUrl,
+    allowInsecureCookies: options.gableAllowInsecureCookies ?? false,
+  });
+
   return {
     name: 'gablenow-admin',
 
@@ -58,6 +71,18 @@ export function adminPlugin(options: AdminPluginOptions): Plugin {
             .replace(/</g, '\\u003c')
             .replace(/>/g, '\\u003e')
             .replace(/&/g, '\\u0026')};`,
+        },
+        {
+          // Dev has to answer the wired-or-standalone question the same way
+          // production does, or the two modes diverge in the one place a
+          // developer never looks: what the document said before the app ran.
+          tag: 'script',
+          injectTo: 'head-prepend',
+          attrs: { id: 'gable-runtime' },
+          children: `window.${RUNTIME_GLOBAL}=${JSON.stringify({
+            wired: gable.enabled,
+            basePath: `${PORTAL_API_PREFIX}/v1`,
+          })};`,
         },
         {
           tag: 'style',
@@ -97,7 +122,18 @@ export function adminPlugin(options: AdminPluginOptions): Plugin {
           void admin(req, res as ServerResponse, req.url ?? '');
         });
 
-        mountApiBehindHostCheck(server, ['/api/config', '/api/admin']);
+        /**
+         * Connect STRIPS the mount prefix from `req.url`, so inside this
+         * handler a request for `/api/portal/v1/catalog` arrives as
+         * `/v1/catalog`. The ERP needs the whole path back or every call 404s —
+         * the same class of bug `preserve_path_prefix` exists for on App
+         * Platform, and it fails identically silently.
+         */
+        server.middlewares.use(PORTAL_API_PREFIX, (req, res) => {
+          void gable.handle(req, res as ServerResponse, `${PORTAL_API_PREFIX}${req.url ?? ''}`);
+        });
+
+        mountApiBehindHostCheck(server, ['/api/config', '/api/admin', PORTAL_API_PREFIX]);
       };
     },
   };

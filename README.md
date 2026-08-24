@@ -14,26 +14,43 @@ building materials) suppliers.** Plan → Quote → Order → Invoice, on one bo
 
 > ### Read this before you read anything else
 >
-> **This is a working prototype, not a shipping product.** It is an unusually
-> well-built prototype — 451 tests, a strict TypeScript build, five out-of-band
-> browser-driven audit gates, and a domain layer with real invariants — but the
-> boundary is sharp and worth stating plainly:
+> **This runs in two modes, and which one you are in changes what every number
+> on screen means.** The app says which, on every screen, in the badge under the
+> dealer's name.
 >
-> - **There is no server-side application and no database.** All state lives in
->   the browser's `localStorage`. Close your browser profile and the data is
->   gone. Two people cannot share a board.
-> - **There is no authentication.** You open the app and you are Dana Reyes of
->   Summit Ridge Builders. The team switcher changes which *role* you act as, so
->   the permission gates are real code paths, but nobody logs in.
-> - **There is no ERP behind it.** `src/core/sim/` is a simulator that plays the
->   supplier: it prices lines, runs a quote desk, ages orders through a
->   lifecycle, and issues invoices. Pricing is real logic against real rules —
->   the *counterparty* is fictional.
-> - **The dealer is fictional.** "Gable Supply" is a default in
+> **Wired (`GABLE_API_URL` set).** The portal talks to a real
+> [`gable`](https://github.com/FutureBuildAIinc/gable) ERP. Contractors sign in
+> with real credentials, browse the dealer's real catalog at their own
+> account pricing, and place orders that land in the dealer's `orders` table.
+> Order status is read back from the ERP. See
+> [Wiring it to `gable`](#wiring-it-to-gable).
+>
+> **Standalone (`GABLE_API_URL` unset — the default).** `src/core/sim/` is a
+> simulator that plays the supplier: it prices lines, runs a quote desk, ages
+> orders through a lifecycle, and issues invoices. Pricing is real logic against
+> real rules — the *counterparty* is fictional. Every screen is labelled "Local
+> simulation". **Do not put a standalone deployment in front of real
+> contractors: the prices are invented.**
+>
+> Either way, these remain true:
+>
+> - **The portal has no database of its own.** Board state — projects, drafts,
+>   scope, customer quotes, signatures — lives in the browser's `localStorage`.
+>   Close your browser profile and it is gone. Two people cannot share a board.
+>   Wired, the things that matter (catalog, pricing, orders, status) live in
+>   `gable`; the board around them does not.
+> - **Three things are portal-local by design, even when wired,** because
+>   `gable` has no endpoint for them: the pre-quote **Plan** stage, the
+>   **customer-quote markup / labour / overhead**, and the **e-signature**. The
+>   UI labels each one where it appears. A signed customer quote is a
+>   `localStorage` record and would not survive a dispute.
+> - **The dealer is fictional in standalone.** "Gable Supply" is a default in
 >   `src/core/domain/config.ts`; the demo contractor is "Summit Ridge Builders".
->   No real dealer's or customer's data is in this repository.
+>   No real dealer's or customer's data is in this repository. Wired, the dealer
+>   name comes from `gable`'s own `PortalConfig`.
 >
-> [ROADMAP.md](ROADMAP.md) lists what is not built, without softening it.
+> [ROADMAP.md](ROADMAP.md) lists what is not built, without softening it —
+> including every `gable` endpoint this portal needed and did not find.
 
 ---
 
@@ -105,15 +122,78 @@ The Gable ecosystem is a set of repositories under
 | [`gable-docs`](https://github.com/FutureBuildAIinc/gable-docs) | Architecture and reference documentation | Docs |
 
 `gable` is the **dealer's** system of record. This portal is the **contractor's**
-window into it. Today those are two separate stories: the portal talks to a
-simulator, not to `gable`. **No integration between this repository and `gable`
-exists yet** — not a client, not an adapter, not an API contract. That is the
-single largest gap and it is the top item in [ROADMAP.md](ROADMAP.md).
+window into it, and as of this change the window is real: set `GABLE_API_URL`
+and the spine — auth, catalog, pricing, order submission, order status — runs
+against `gable`'s `/api/portal/v1/*` API. See below for exactly what is wired
+and what is not.
 
-`gable` already contains portal-shaped surfaces of its own under
-`app/src/pages/portal/` and `backend/internal/portal/`. Reconciling those with
-this repository — which is the portal, and which is the seam — is an open
-architectural question, not a settled one.
+`gable` also contains a portal-shaped surface of its own under
+`app/src/pages/portal/`. Which repository is *the* contractor portal remains an
+open architectural question; what is now settled is the seam between them —
+`backend/internal/portal/` is the contract, and this repository is a client of
+it.
+
+---
+
+## Wiring it to `gable`
+
+```bash
+# 1. gable, on :8080, against its own database
+cd ../gable/backend
+DATABASE_URL="postgres://gable_user@127.0.0.1:5432/gable_db?sslmode=disable" \
+  PORTAL_JWT_SECRET="$(openssl rand -hex 32)" \
+  INSECURE_COOKIES=true PORT=8080 go run ./cmd/server
+
+# 2. the portal, pointed at it
+cd ../../gable-portal
+GABLE_API_URL=http://127.0.0.1:8080 GABLE_ALLOW_INSECURE_COOKIES=true npm run dev
+```
+
+Sign in with a `customer_users` row from `gable` (the seeded demo is
+`demo@kelbrook.ca` / `password`). The badge under the dealer's name turns green
+and reads **Live — <dealer>**.
+
+### What is genuinely wired
+
+| | Source of truth | How |
+|---|---|---|
+| **Sign-in** | `gable` | `POST /api/portal/v1/login`. The JWT is an httpOnly `portal_token` cookie the browser holds and this app cannot read. A 401 signs you out; it is never retried. |
+| **Catalog** | `gable` | `GET /catalog` replaces the seeded catalog wholesale. |
+| **Pricing** | `gable` | `customer_price` from the ERP's own waterfall (contract → promotional → tier → retail). No tier table on this side. |
+| **Projects** | `gable` | `GET /projects` replaces the seeded projects. |
+| **Order submission** | `gable` | The board's Plan → Order drag clears the ERP cart, adds this order's lines, and checks out. A real `orders` row appears in the dealer's database. |
+| **Order status** | `gable` | Polled from `GET /orders` and refined by `GET /deliveries`. **The simulator's scheduler is stopped** — a real ERP drives state, not a timer. |
+| **Invoices, deliveries, dashboard** | `gable` | Available through the client (`src/core/gable/client.ts`); the board reads status and deliveries today. |
+
+### What is still portal-local, and is labelled as such in the UI
+
+| | Why |
+|---|---|
+| **The Plan stage** | A draft scope is the contractor's working notebook. The dealer never sees it, and `gable` has no draft resource. |
+| **Customer quote — markup, labour, overhead** | This is the contractor's own margin. The dealer must never see it, and `gable` has no endpoint that would carry it. |
+| **E-signature** | A `localStorage` record. It would not survive a dispute. Stated on the homeowner's own screen, not only in the contractor's. |
+| **The quote desk** | `gable`'s portal API has **no quote resource at all**. On the wired path the Quote column keeps a local record so the board's guards still hold, and says plainly that nothing was sent. |
+| **Cancelling a placed order** | There is no cancel endpoint. The portal records that it could not cancel, leaves the ERP order untouched, and tells you to call the yard. It does **not** flip the local record to cancelled. |
+| **Rescheduling a delivery** | No reschedule endpoint either, so the action is refused rather than writing a date the dispatcher will never see. |
+
+Every one of those gaps is listed as a missing `gable` endpoint in
+[ROADMAP.md §1](ROADMAP.md).
+
+### How the connection is shaped, and why
+
+`gable` sets its session cookie `HttpOnly; Secure; SameSite=Strict;
+Path=/api/portal`. A `SameSite=Strict` cookie is only ever sent on *same-site*
+requests — so a portal on `portal.example.com` calling `erp.example.com`
+directly would have the cookie withheld on every request and see 401 forever,
+a failure that looks exactly like a wrong password.
+
+So the portal's own host proxies `/api/portal/*` to `GABLE_API_URL`
+(`server/gable-proxy.ts`). Everything is same-origin, the cookie's path matches
+unchanged, and — the part that matters for deployment — **`GABLE_API_URL` never
+reaches the browser and is never baked into the bundle.** It is read at run
+time. The client is told only *that* an ERP is configured, via a flag injected
+into the document before first paint (so there is no frame in which a simulated
+board is shown as a live one).
 
 ---
 
@@ -168,7 +248,7 @@ Every one of these is real; run `npm run <name>`.
 | `npm run lint` | Biome check, **not** writing — this is what CI runs |
 | `npm run preview` | Serve the production build with Vite |
 | `npm run build:server` | esbuild-bundle the production host to `dist-server/serve.mjs` |
-| `npm run serve` | Run that bundle (`PORT`, `HOST` configurable; `HOST` defaults to `127.0.0.1`) |
+| `npm run serve` | Run that bundle. `HOST` defaults to **`0.0.0.0`** so a container actually receives traffic — set `HOST=127.0.0.1` for a local-only run. |
 
 Four of those — `typecheck`, `lint`, `test`, `build` — are the gates CI enforces
 and the gates a PR must pass. Five more exist and are *not* in CI, because each
@@ -207,20 +287,71 @@ that knows what an order costs.
 src/core/          framework-free
   lib/money.ts       integer cents, everywhere. Never floats.
   domain/            Project, Order, ScopeItem, totals, the stage machine
-  sim/               the supplier's ERP: pricing engine, quote desk, lifecycle
+  supplier/          THE SEAM. port.ts is the interface; sim.ts is one impl.
+  sim/               the SIMULATED supplier: pricing engine, quote desk, lifecycle
+  gable/             the REAL supplier: HTTP client, schema, mapper, pricing,
+                     connection lifecycle. The other impl of supplier/port.ts.
   actions/           the ONLY mutation path — buttons and the AI both call these
   selectors/         read models (board, order detail, AR, tracking)
   stores/            tiny observable stores + localStorage with cross-tab leases
   ai/                prompt, session, and the tool layer bound to actions/
 src/ui/            React 18, Tailwind 4, react-router
 src/admin/         the dealer console — a separate Vite entry point
-server/            host-agnostic (req, res) handlers: Claude proxy + admin API
+server/            host-agnostic (req, res) handlers: Claude proxy, admin API,
+                   and the same-origin gable proxy
 scripts/           the five out-of-band audit gates + the guide capture harness
+Dockerfile         multi-stage: vite + esbuild build, then a node:22-alpine host
+.do/               an example DigitalOcean App Platform spec
 ```
+
+`src/core/supplier/port.ts` is the load-bearing addition. `sim/pricing.ts` has
+carried a comment since M1 saying that when a real ERP connects, the simulator
+is replaced by an API call returning the same `PriceQuote` and nothing in
+`domain/` changes. That is now a tested claim rather than a design intention:
+two implementations satisfy one interface, `actions/` calls neither directly,
+and the 451 pre-existing tests pass unchanged through the new call frame.
 
 `CLAUDE.md` is the long-form architecture document — roughly a thousand lines
 of why, written as the milestones landed. It is the best thing to read before
 changing anything in `src/core/`.
+
+---
+
+## Deploying
+
+```bash
+docker build -t gable-portal .
+docker run -p 8080:8080 -e GABLE_API_URL=https://erp.example.com gable-portal
+```
+
+`.do/app-portal.yaml` is an example DigitalOcean App Platform spec, modelled on
+`gable/.do/app-demo.yaml`. Replace the repo, the domain and `GABLE_API_URL`
+before applying. **It has not been applied to a live account** — the routing,
+health-check and env-scope choices in it are reasoned, not observed.
+
+Three things about the container are worth knowing before you debug it at 2am:
+
+- **It binds `0.0.0.0`.** `server/serve.ts` used to default `HOST` to
+  `127.0.0.1`, which is correct on a laptop and fatal in a container: App
+  Platform's router and health checker live outside the container's network
+  namespace, so a loopback bind starts cleanly, logs cheerfully, passes every
+  local smoke test, and receives no traffic at all.
+- **`preserve_path_prefix: true` is required** on the route. Without it App
+  Platform strips the matched prefix and `/api/portal/v1/catalog` reaches the
+  container as `/v1/catalog`; the proxy then forwards a truncated path and
+  `gable` 404s every call, with nothing in either log saying why.
+- **`/healthz` does not touch the ERP.** A `gable` outage must not also take the
+  portal out of rotation — the contractor should keep the board and an honest
+  "Supplier unreachable" badge, not a 503 from the router.
+
+Nothing is baked in at build time. There is no `ARG` for `GABLE_API_URL` and
+nothing `VITE_`-prefixed anywhere, so the same image is promotable from staging
+to production and contains no secret and no ERP address.
+
+`GABLE_ALLOW_INSECURE_COOKIES=true` strips `Secure` from the session cookie on
+its way back through the proxy. It is needed only when the *portal* is served
+over plain HTTP — `npm run dev`, or a container smoke-tested before a TLS
+terminator is in front of it. Never set it on anything reachable over a network.
 
 ---
 

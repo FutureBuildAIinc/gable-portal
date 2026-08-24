@@ -22,44 +22,163 @@ Where the two disagree, this file governs.
 production surface area.**
 
 Both halves of that are true and neither should be discounted. The engineering
-is real: 451 tests, all passing (see §6 for the three that used to be pinned),
+is real: 548 tests, all passing (see §6 for the three that used to be pinned),
 `strict` TypeScript with `noUncheckedIndexedAccess` and
 `exactOptionalPropertyTypes`, an architectural boundary enforced by a test
 rather than a convention, five browser-driven audit gates, and a domain layer
 whose comments record the specific bug each invariant was written for. The
 money path — `money.ts`, `totals.ts`, `selectors/order.ts`, `selectors/ar.ts`,
-`domain/customer-quote.ts` — is at 100% statement coverage. The product is not:
-there is no server, no database, no login, and no ERP.
+`domain/customer-quote.ts` — is at 100% statement coverage.
 
-If you are evaluating this to run a business on, the answer today is no. If you
-are evaluating it as the contractor-side design and domain model for the Gable
-ecosystem, it is further along than most things at this stage.
+**What changed:** there is now a real ERP behind it, if you point it at one. The
+spine — sign-in, catalog, customer-specific pricing, order submission, order
+status — runs against a live `gable`, verified against a seeded Postgres and the
+real JWT middleware rather than a mock. §1 has the transcript and the exact list
+of what is wired and what is not.
+
+What is still missing: the portal has no persistence of its own, so the board
+around those ERP-backed facts still lives in `localStorage`. There is no audit
+trail. A signed customer quote is still a browser record.
+
+If you are evaluating this to run a business on, the answer today is still no —
+but the question is now "what else does it need", not "does it connect to
+anything".
 
 ---
 
 ## Known problems we are not hiding
 
-### 1. There is no integration with `gable`. None.
+### 1. The `gable` integration — the spine is wired, the edges are not
 
-This is the largest gap and it is not partial. There is no API client, no
-adapter, no shared type package, no authentication handshake, and no agreed
-contract with the host ERP. `src/core/sim/` is a *simulator* that plays the
-supplier: it prices, it runs a quote desk, it ages orders, it issues invoices.
+**This section used to say there was no integration at all. That is no longer
+true, and the honest version is more useful than either extreme.**
 
-The domain layer was built anticipating this — `sim/pricing.ts` carries a
-comment stating that when a real ERP connects, everything in that file is
-replaced by an API call returning the same `PriceQuote` and nothing in
-`domain/` changes. That is a *design intention*, not a tested claim. Nobody has
-tried it.
+Set `GABLE_API_URL` and the portal runs against a real `gable` at
+`/api/portal/v1/*`. Leave it unset and `src/core/sim/` plays the supplier
+exactly as before — a supported mode, not a degraded one, and what keeps the
+pre-existing suite meaningful.
 
-There is also an unresolved question underneath: `gable` already contains
-portal-shaped surfaces at `app/src/pages/portal/` and
-`backend/internal/portal/`. Which repository is the portal, and which is the
-seam, has not been decided.
+`sim/pricing.ts` has carried a comment since M1 saying that when a real ERP
+connects, everything in that file is replaced by an API call returning the same
+`PriceQuote` and nothing in `domain/` changes. Somebody has now tried it. The
+claim held: `src/core/supplier/port.ts` is the interface, `supplier/sim.ts` and
+`gable/supplier.ts` are the two implementations, `actions/` calls neither
+directly, and every pre-existing test passes unchanged through the added call
+frame.
 
-**Nothing else on this roadmap matters as much as this.**
+#### Verified against a live `gable` and a seeded Postgres
 
-### 2. No backend, no database, no authentication
+Not a mock. `gable` booted with `AUTH_MODE=production` so the **real**
+`NewPortalAuthMiddleware` was in the path — not the dev-mode branch that injects
+Sam Kelbrook into every request and would have made a login "succeed" no matter
+what was sent.
+
+- `demo@kelbrook.ca` with the wrong password → 401, `GableAuthError`, one
+  request issued and no retry.
+- The same email with `password` → 200, `portal_token` cookie set
+  (`HttpOnly; SameSite=Strict; Path=/api/portal`), **no token in the response
+  body**.
+- `GET /catalog` → 71 products, which is exactly what the portal then rendered.
+  `CORN2006` list $23.25 → `2325` cents, customer price $23.24 → `2324` cents,
+  `price_source: PROMOTIONAL`.
+- Checkout → `orders` row `b75c496c-de6c-4113-a786-b034a86da81c`,
+  `customer_id 6d949033-…` (Kelbrook Construction), `total_amount 341.88`, and
+  two `order_lines` (`CORN2006 x12 @ 23.24`, `CORN2009 x12 @ 5.25`) — read back
+  out of Postgres directly, not inferred from a 200.
+- The dealer then moved that order `DRAFT → CONFIRMED` **in the database**, and
+  the portal's next read showed `confirmed / GBL-b75c496c`, note "Gable Lumber &
+  Supply reports this order as CONFIRMED", subtotal `34188` cents. No timer was
+  involved; the simulator's scheduler was stopped.
+- With `GABLE_API_URL` unset the same build reports
+  `{"ok":true,"gable":"standalone"}`, injects `{"wired":false}`, and the full
+  pre-existing suite passes.
+
+#### Wired for real
+
+| | Endpoint |
+|---|---|
+| Sign-in, sign-out, session expiry | `POST /login`, `POST /logout` |
+| Catalog | `GET /catalog`, `GET /catalog/{id}` |
+| Customer-specific pricing | `customer_price` / `price_source` on the catalog DTO |
+| Projects | `GET /projects` |
+| Order submission | `GET/POST/DELETE /cart[/items]` then `POST /checkout` |
+| Order status | `GET /orders`, `GET /orders/{id}`, refined by `GET /deliveries` |
+| AR | `GET /dashboard`, `GET /invoices` |
+
+The simulator's scheduler is **stopped** on the wired path. A real ERP drives
+state; a timer aging cards behind a live board is the exact bug that would make
+this integration worse than no integration.
+
+#### Endpoints `gable` does not have
+
+Each of these is a thing the portal wanted and could not do. None of them is
+simulated on the wired path; each is refused or labelled in the UI.
+
+- **No quote resource of any kind.** There is no way to send a scope to a dealer
+  for pricing, and therefore no way to price a special-order line. The Quote
+  column keeps a local record so the stage machine's guards still hold, and says
+  so.
+- **No order cancellation.** No `POST /orders/{id}/cancel`. The portal records
+  that it could not cancel and leaves the ERP order untouched — it does *not*
+  flip the local copy to `cancelled`.
+- **No delivery reschedule.** Not on the order, not on the delivery. The action
+  is refused rather than writing a promised date no dispatcher will ever see.
+- **No lead time on a catalog product**, so the lead-time-vs-delivery-date
+  warnings — a core part of the product — go quiet when wired. Not defaulted to
+  a plausible number of days; a crew gets scheduled around that.
+- **No volume breaks on the portal catalog**, so "buy 20 more and save" goes
+  quiet too.
+- **No category tree.** `category` is a display string, so browse is flat.
+- **No project association on an order.** `PortalOrderDTO` has no `project_id`,
+  so a customer's *existing* ERP order history has nowhere to land on a
+  project-scoped board and is deliberately not imported. Orders placed through
+  the portal are tracked; orders placed before it are not visible here.
+- **No push channel.** Status is polled every 30s.
+
+#### Two defects found by wiring it, both fixed here
+
+- **A rejected login was reported as a session expiry** and fired the expiry
+  handler, tearing down a session that had never existed. On `/login` a 401 is
+  the expected answer to a normal question; everywhere else it is the end of
+  one. Caught by the live transcript, not by a test.
+- **An ERP status change that the portal rounds to the same state was
+  invisible.** `CONFIRMED → ON_HOLD` both map to `confirmed`, so the poll saw
+  "no change" and the contractor never learned their order had been held.
+  De-duplication now compares what the ERP *said*, not what the portal made of
+  it.
+
+#### What is still local, and is labelled in the UI
+
+The pre-quote **Plan** stage, the customer quote's **markup / labour /
+overhead**, and the **e-signature**. `gable` has no equivalent endpoints and
+inventing them was out of scope. The `LocalOnly` component exists to keep that
+disclosure next to the thing it is about rather than buried in this file; the
+homeowner's signing screen carries an unconditional version of it, because that
+page is reached by an unauthenticated share link and has no ERP connection to
+key off.
+
+#### Still open
+
+`gable` contains a portal-shaped surface of its own at `app/src/pages/portal/`.
+Which repository is *the* contractor portal is still undecided. What is now
+settled is the seam: `backend/internal/portal/` is the contract, and this
+repository is a client of it.
+
+The UI is wired at the spine and no further. Invoices, deliveries and the
+dashboard are reachable through `src/core/gable/client.ts` and tested, but the
+Pay tab still reads the local invoice store rather than `gable`'s. That is the
+next honest increment.
+
+### 2. No backend and no database *of the portal's own*
+
+Authentication is no longer on this list — see §1. Wired to `gable`, a
+contractor signs in with real credentials against a real JWT middleware, and the
+session is an httpOnly cookie this app cannot read. **Standalone, there is still
+no login at all**: you open the app and you are Dana Reyes of Summit Ridge
+Builders.
+
+Everything below is still true in both modes, because the portal has no
+persistence of its own either way.
 
 All state is in the browser's `localStorage` under the `gn:` prefix, with
 versioned migrations, cross-tab adoption via `storage` events, and a

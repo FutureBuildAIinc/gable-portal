@@ -22,6 +22,11 @@ export default defineConfig(({ mode }) => {
         // the only safe default for a surface that accepts a credential.
         adminToken: env.GABLENOW_ADMIN_TOKEN,
         allowRemote: env.GABLENOW_ADMIN_ALLOW_REMOTE === 'true',
+        // Deliberately NOT VITE_-prefixed: the ERP's address is server-side and
+        // must never be inlined into the client bundle. The browser only ever
+        // learns THAT an ERP is configured, via the injected runtime flag.
+        gableApiUrl: env.GABLE_API_URL,
+        gableAllowInsecureCookies: env.GABLE_ALLOW_INSECURE_COOKIES === 'true',
       }),
     ],
     server: {

@@ -436,7 +436,16 @@ describe('the dealer name is configuration, not a literal', () => {
         // price this" has a lowercase w, so both still get caught. Relaxing
         // this to a plain "Gable Supply" match would let that second sentence
         // back in, and it is the exact one the guard was written for.
-        const withoutProductNames = code.replace(/Gable(?=[A-Z])[A-Za-z]*/g, '');
+        //
+        // The second replace covers the mirror case, added when the ERP client
+        // landed: `loginToGable`, `initGableConnection`, `isGableWired` — the
+        // integration is named after the repository it talks to, and those are
+        // identifiers, not copy. Only a `Gable` that ends a camelCase word is
+        // stripped, so "the Gable quote desk" (preceded by a space) and
+        // "Gable Supply" are both still caught.
+        const withoutProductNames = code
+          .replace(/Gable(?=[A-Z])[A-Za-z]*/g, '')
+          .replace(/(?<=[a-z0-9])Gable\b/g, '');
         if (withoutProductNames.includes('Gable')) offenders.push(full.slice(root.length));
       }
     };

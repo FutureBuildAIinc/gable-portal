@@ -31,6 +31,7 @@ import {
   writeMeta,
 } from './stores/persistence';
 import {
+  type CatalogState,
   PERSISTED_STORES,
   activityStore,
   catalogStore,
@@ -48,6 +49,8 @@ import {
   teamStore,
 } from './stores/root';
 import { collectionFrom } from './stores/store';
+import type { SupplierPort } from './supplier/port';
+import { createSimSupplier } from './supplier/sim';
 
 /**
  * Wires the app together once, at startup.
@@ -60,8 +63,22 @@ import { collectionFrom } from './stores/store';
 
 export interface AppContext {
   clock: SimClock;
+  /**
+   * Who prices a line. The simulator's tier engine when standalone, the ERP's
+   * own waterfall when wired — same interface either way, which is the claim
+   * `sim/pricing.ts` has carried in a comment since M1 and that
+   * `gable/pricing.ts` now makes true.
+   */
   pricing: PricingEngine;
+  /**
+   * The simulator itself. Still here on the wired path because the demo
+   * controls and the clock live on it — but its SCHEDULER is stopped once a
+   * real ERP is driving state. Prefer `supplier` for anything that talks to the
+   * far side of the counter.
+   */
   sim: Sim;
+  /** The seam. Either the simulator or a live `gable`; callers cannot tell. */
+  supplier: SupplierPort;
   seed: number;
 }
 
@@ -81,6 +98,36 @@ let isLeader = false;
 export function getContext(): AppContext {
   if (!context) throw new Error('boot() has not run yet');
   return context;
+}
+
+export interface SupplierSwap {
+  supplier: SupplierPort;
+  pricing: PricingEngine;
+  /** The ERP's catalog, replacing the seed. */
+  catalog: CatalogState;
+}
+
+/**
+ * Swap the simulated supplier for a real one, at runtime, after boot.
+ *
+ * Deliberately NOT a re-boot. A re-boot would wipe and reseed, which is exactly
+ * wrong here — connecting to the ERP is meant to REPLACE the supplier, not
+ * restart the app, and re-running `boot()` would also re-acquire the cross-tab
+ * lease and restart the scheduler this swap exists to stop.
+ *
+ * Catalog and pricing land in the same call on purpose. Installing ERP products
+ * and then ERP prices as two steps leaves a window where a live board prices a
+ * real SKU through the simulator's tier table, which is the failure mode the
+ * whole integration is correcting. One assignment, no window.
+ *
+ * `src/core/gable/connect.ts` is the only caller. The UI re-renders because
+ * `gableStore` changes, and every consumer of `pricing` reads it through
+ * `getContext()` at call time rather than capturing it at import.
+ */
+export function installSupplier(swap: SupplierSwap): void {
+  if (!context) throw new Error('boot() has not run yet');
+  catalogStore.set(swap.catalog);
+  context = { ...context, supplier: swap.supplier, pricing: swap.pricing };
 }
 
 export interface BootOptions {
@@ -190,7 +237,9 @@ export function boot(options: BootOptions = {}): AppContext {
 
   // The sim reads sessionStore, so it is built after the session is set.
   const sim = createSim(clock, seed);
-  context = { clock, pricing, sim, seed };
+  // Standalone until something connects. `boot()` never reaches the network:
+  // an unreachable ERP must degrade to "sign in again", not to a blank app.
+  context = { clock, pricing, sim, supplier: createSimSupplier(sim), seed };
 
   // Keep the persisted clock anchor current so a reload resumes, not restarts.
   // Leader-only: a follower's anchor is a stale copy adopted at boot, and

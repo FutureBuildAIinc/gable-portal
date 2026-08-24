@@ -131,6 +131,19 @@ export function requestDeliveryReschedule(
   const gate = requireCapability('edit-scope');
   if (!gate.ok) return gate;
 
+  /**
+   * `gable` has no reschedule endpoint on its portal API — not on the order,
+   * not on the delivery. Moving the date here would write a promise into
+   * `localStorage` that the dealer's dispatcher never sees, and the next status
+   * sync would quietly overwrite it. Refusing is the honest answer; the missing
+   * endpoint is recorded in ROADMAP §1.
+   */
+  if (getContext().supplier.kind === 'gable') {
+    return err(
+      'This portal cannot move a delivery date in the supplier’s system — their ERP has no reschedule request. Call the yard and they can move it.',
+    );
+  }
+
   const resolved = liveOrder(orderId);
   if (!resolved.ok) return resolved;
   const { order, salesOrder } = resolved.value;

@@ -6,6 +6,7 @@ import { unreadCount } from '@core/domain/activity';
 import { activityStore, sessionStore } from '@core/stores/root';
 import { teamStore } from '@core/stores/root';
 import { GableMark } from '@ui/components/brand/GableMark';
+import { SupplierBadge } from '@ui/components/gable/SupplierBadge';
 import { Avatar } from '@ui/components/team/Avatar';
 import { PersonSwitcher } from '@ui/components/team/PersonSwitcher';
 import { useStore } from '@ui/hooks/useStore';
@@ -105,6 +106,11 @@ export function PortalLayout({
               <p className="truncate text-[12px] text-text-muted">{account?.name ?? ''}</p>
             </div>
           </div>
+          {/* Directly under the dealer's name, because "whose numbers am I
+              looking at" and "are these numbers real" are the same question. */}
+          <div className="mt-3">
+            <SupplierBadge />
+          </div>
         </div>
 
         <nav className="flex flex-col gap-0.5 p-3">
@@ -163,6 +169,9 @@ export function PortalLayout({
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {/* Mobile has no sidebar, so the badge rides in the header —
+                    it must not be a desktop-only reassurance. */}
+                <SupplierBadge className="mr-1 lg:hidden" />
                 {actions}
                 {acting ? (
                   <button

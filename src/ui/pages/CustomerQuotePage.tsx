@@ -496,6 +496,19 @@ function SignSheet({
           <div>
             <span className="mb-1 block font-medium text-[13px]">Signature</span>
             <SignaturePad onChange={setSignature} />
+            {/*
+              Stated on the homeowner's own screen, not just in the
+              contractor's. This page is reached by an unauthenticated share
+              link, so `LocalOnly` (which keys off the ERP connection) would
+              render nothing here — the disclosure has to be unconditional. It
+              is also the only honest thing to say: SECURITY.md and ROADMAP §2
+              both record that a signed quote is a browser record and would not
+              survive a dispute.
+            */}
+            <p className="mt-1.5 text-[11px] text-gray-500">
+              Your acceptance is recorded by your contractor's portal. It is not filed with the
+              supplier and is not a substitute for a signed contract.
+            </p>
           </div>
 
           <label className="flex cursor-pointer gap-2.5 py-1.5">

@@ -55,26 +55,31 @@ export function moveOrderToStage(orderId: string, to: OrderStage): Result<MoveOr
   });
   if (!decision.ok) return decision;
 
-  const { clock, sim } = getContext();
+  const { clock, supplier } = getContext();
   const updated: Order = { ...order, stage: to, updatedAt: clock.nowIso() };
   ordersStore.set(patch(ordersStore.get(), orderId, updated));
 
-  // The stage machine decides WHAT should happen; the simulator plays the
-  // supplier doing it. Effects run after the stage change so the sim sees the
-  // order in its new state.
+  // The stage machine decides WHAT should happen; the supplier does it. Effects
+  // run after the stage change so the supplier sees the order in its new state.
+  //
+  // `supplier` is the seam, not `sim`: standalone this is the simulator, wired
+  // it is HTTP to a running `gable`, and neither this switch nor anything in
+  // `domain/` can tell the difference. The one thing that DOES differ is
+  // failure — a real ERP can refuse, and `gable/supplier.ts` walks the stage
+  // move back itself when it does.
   for (const effect of decision.value.effects) {
     switch (effect.kind) {
       case 'submit-to-quote-desk':
-        sim.submitToQuoteDesk(orderId);
+        supplier.submitToQuoteDesk(orderId);
         break;
       case 'withdraw-from-quote-desk':
-        sim.withdrawFromQuoteDesk(orderId);
+        supplier.withdrawFromQuoteDesk(orderId);
         break;
       case 'create-sales-order':
-        sim.createOrderWithSupplier(updated);
+        supplier.createOrderWithSupplier(updated, decision.value.from);
         break;
       case 'cancel-sales-order':
-        sim.cancelWithSupplier(orderId);
+        supplier.cancelWithSupplier(orderId);
         break;
     }
   }

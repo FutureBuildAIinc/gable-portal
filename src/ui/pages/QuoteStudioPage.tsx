@@ -19,6 +19,7 @@ import { formatCents, toCents } from '@core/lib/money';
 import { daysBetween, formatDate } from '@core/lib/time';
 import { teamStore } from '@core/stores/root';
 import { customerQuotesStore, ordersStore } from '@core/stores/root';
+import { LocalOnly } from '@ui/components/gable/LocalOnly';
 import { Button } from '@ui/components/ui/Button';
 import { useStore } from '@ui/hooks/useStore';
 import { AlertTriangle, ChevronLeft, Copy, Eye, Minus, Plus, Send, Trash2 } from 'lucide-react';
@@ -102,6 +103,18 @@ export function QuoteStudioPage({ orderId, onBack }: Props) {
   return (
     <Wrapper onBack={onBack} title={order.name} subtitle={quote.number}>
       <div className="space-y-5 p-4 pb-44">
+        {/*
+          The single most important sentence on this page once a real ERP is
+          behind the portal. Markup, labour and overhead are the contractor's
+          own margin: the dealer must never see them, and `gable` has no
+          endpoint that would carry them even if it should. Everything below is
+          this browser's, and the e-signature the homeowner leaves is a
+          localStorage record — it would not survive a dispute.
+        */}
+        <LocalOnly variant="note">
+          Your markup, labour and overhead are yours alone. This proposal — and any signature on it
+          — is stored in this browser and is never sent to your supplier's system.
+        </LocalOnly>
         {!mayQuote ? (
           <section className="rounded-[var(--radius-card)] bg-surface-inset p-3">
             <p className="text-[12.5px] leading-relaxed text-text-muted">

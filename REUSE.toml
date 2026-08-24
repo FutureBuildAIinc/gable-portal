@@ -134,7 +134,27 @@ path = [
   ".github/**",
   ".claude/**",
   ".gitignore",
+  ".dockerignore",
+  ".do/**",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 FutureBuild, Inc. and OpenLBM contributors"
 SPDX-License-Identifier = "LicenseRef-OpenLBM-Docs-1.0"
+
+# ---------------------------------------------------------------------------
+# The container image
+# ---------------------------------------------------------------------------
+# `Dockerfile` is Community-Source, not Docs, and the split from `.do/` above is
+# deliberate. An App Platform spec is a description of one operator's
+# environment — repo names, domains, instance sizes — and is meta-material like
+# a CI workflow. The Dockerfile is not: it is the build recipe that produces the
+# artifact people actually run in production, which is precisely what the
+# Community-Source terms are about. Same reasoning `scripts/**` gets, and the
+# same line gable draws.
+[[annotations]]
+path = [
+  "Dockerfile",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 FutureBuild, Inc. and OpenLBM contributors"
+SPDX-License-Identifier = "LicenseRef-OpenLBM-Community-Source-1.0"
