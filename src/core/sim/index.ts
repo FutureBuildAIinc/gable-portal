@@ -6,7 +6,7 @@ import { type ActivityEntry, MAX_ACTIVITY_ENTRIES } from '../domain/activity';
 import type { Order } from '../domain/project';
 import { orderTotals } from '../domain/totals';
 import { newId } from '../lib/ids';
-import { DAY_MS } from '../lib/time';
+import { DAY_MS, type IsoDateTime, formatDate, fromIso, startOfDay } from '../lib/time';
 import {
   activityStore,
   invoicesStore,
@@ -32,6 +32,20 @@ export interface Sim {
   withdrawFromQuoteDesk(orderId: string): void;
   createOrderWithSupplier(order: Order): void;
   cancelWithSupplier(orderId: string): void;
+  /**
+   * Move a placed order's date.
+   *
+   * This lives here, not in `actions/fulfillment.ts`, because it is the
+   * SUPPLIER's work: it re-times the dispatch and the will-call auto-collect,
+   * both of which are simulator-owned scheduler tasks. The action layer keeps
+   * only the guards a contractor can understand (permission, "the truck has
+   * left", "that date has passed") and then asks whichever supplier is
+   * installed. On the wired path the same question goes to `gable`, which
+   * answers "recorded, not applied" — see `supplier/port.ts`.
+   *
+   * Returns null when there is nothing placed to move.
+   */
+  applyReschedule(orderId: string, newDate: IsoDateTime): { promisedDate: IsoDateTime } | null;
   control: SimControl;
 }
 
@@ -179,6 +193,71 @@ export function createSim(clock: SimClock, seed: number): Sim {
         message: `Cancelled ${so?.number ?? 'the order'} with ${supplierName()}`,
         orderId,
       });
+    },
+
+    applyReschedule(orderId, newDate) {
+      const order = ordersStore.get().byId[orderId];
+      if (!order?.salesOrderId) return null;
+      const salesOrder = salesOrdersStore.get().byId[order.salesOrderId];
+      if (!salesOrder) return null;
+
+      const now = clock.nowIso();
+      const noun = salesOrder.fulfillment === 'willcall' ? 'Pickup' : 'Delivery';
+
+      salesOrdersStore.set(
+        patch(salesOrdersStore.get(), salesOrder.id, {
+          promisedDate: newDate,
+          tracking: [
+            ...salesOrder.tracking,
+            {
+              at: now,
+              status: salesOrder.status,
+              note: `${noun} moved to ${formatDate(newDate)} at your request.`,
+            },
+          ],
+        }),
+      );
+      ordersStore.set(
+        patch(ordersStore.get(), orderId, { requestedDate: newDate, updatedAt: now }),
+      );
+
+      // If the goods are already staged, the dispatch moment was fixed when
+      // they were picked. Re-time it, or the new date would be cosmetic and the
+      // truck would leave on the old one.
+      const retimed = scheduler.cancelWhere(
+        (task) => task.type === 'order.dispatch' && task.payload.salesOrderId === salesOrder.id,
+      );
+      if (retimed > 0) {
+        // Same rule the sim uses elsewhere: never roll before the requested day.
+        scheduler.scheduleAt(
+          'order.dispatch',
+          Math.max(clock.now(), fromIso(startOfDay(newDate))),
+          { salesOrderId: salesOrder.id },
+        );
+      }
+
+      // A will-call's future is an auto-collect, not a dispatch — and it was
+      // timed off the old pickup date. Without re-timing it, "pickup moved to
+      // Friday" would still get collected and billed on Wednesday.
+      const collectRetimed = scheduler.cancelWhere(
+        (task) => task.type === 'order.deliver' && task.payload.salesOrderId === salesOrder.id,
+      );
+      if (collectRetimed > 0 && salesOrder.fulfillment === 'willcall') {
+        scheduler.scheduleAt(
+          'order.deliver',
+          Math.max(clock.now(), fromIso(startOfDay(newDate)) + DAY_MS / 2),
+          { salesOrderId: salesOrder.id },
+        );
+      }
+
+      ctx.log({
+        actor: 'user',
+        kind: 'order.rescheduled',
+        message: `${noun} for ${salesOrder.number} moved to ${formatDate(newDate)}`,
+        orderId,
+      });
+
+      return { promisedDate: newDate };
     },
 
     control: {

@@ -5,7 +5,7 @@ SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
 
 # Roadmap
 
-**Last reviewed: 2026-08-20.** This is the plan of record and the honest
+**Last reviewed: 2026-08-24.** This is the plan of record and the honest
 inventory of what does not exist. It is deliberately written so that reading
 only the first two sections tells you whether this repository can do the thing
 you want.
@@ -22,7 +22,7 @@ Where the two disagree, this file governs.
 production surface area.**
 
 Both halves of that are true and neither should be discounted. The engineering
-is real: 548 tests, all passing (see §6 for the three that used to be pinned),
+is real: 618 tests, all passing (see §6 for the three that used to be pinned),
 `strict` TypeScript with `noUncheckedIndexedAccess` and
 `exactOptionalPropertyTypes`, an architectural boundary enforced by a test
 rather than a convention, five browser-driven audit gates, and a domain layer
@@ -30,11 +30,14 @@ whose comments record the specific bug each invariant was written for. The
 money path — `money.ts`, `totals.ts`, `selectors/order.ts`, `selectors/ar.ts`,
 `domain/customer-quote.ts` — is at 100% statement coverage.
 
-**What changed:** there is now a real ERP behind it, if you point it at one. The
-spine — sign-in, catalog, customer-specific pricing, order submission, order
-status — runs against a live `gable`, verified against a seeded Postgres and the
-real JWT middleware rather than a mock. §1 has the transcript and the exact list
-of what is wired and what is not.
+**What changed:** there is now a real ERP behind it, if you point it at one.
+Sign-in, catalog, customer-specific pricing, order submission and order status
+were wired first; the quote desk, order cancellation, delivery-reschedule
+requests, job history, lead times, volume breaks, the category tree and a
+conditional change feed followed once `gable` grew the endpoints for them. All
+of it is verified against a seeded Postgres rather than a mock. §1 has the
+transcript and the exact list of what is wired, what each capability is allowed
+to claim on screen, and what is still missing.
 
 What is still missing: the portal has no persistence of its own, so the board
 around those ERP-backed facts still lives in `localStorage`. There is no audit
@@ -48,10 +51,11 @@ anything".
 
 ## Known problems we are not hiding
 
-### 1. The `gable` integration — the spine is wired, the edges are not
+### 1. The `gable` integration — wired, with the edges named
 
-**This section used to say there was no integration at all. That is no longer
-true, and the honest version is more useful than either extreme.**
+**This section used to say there was no integration at all, and then that the
+spine was wired and the edges were not. Both were true when written. Neither is
+now, and a stale honesty surface is worse than never having written one.**
 
 Set `GABLE_API_URL` and the portal runs against a real `gable` at
 `/api/portal/v1/*`. Leave it unset and `src/core/sim/` plays the supplier
@@ -93,6 +97,95 @@ what was sent.
   `{"ok":true,"gable":"standalone"}`, injects `{"wired":false}`, and the full
   pre-existing suite passes.
 
+#### The eight capabilities, verified against the same live `gable`
+
+Real transcript, `AUTH_MODE=dev` on the seeded Postgres, `35` portal routes
+registered. Every number below was read back out of the database or off the
+wire, not inferred from a 200.
+
+- **Quotes.** `POST /quotes` with a catalog line and a special-order line
+  created `ccf43bf8-…` — `quotes.source = 'portal'`, `state = 'DRAFT'`,
+  `total_amount 0.00`, and two `quote_lines` at `unit_price 0.0000`
+  (`CORN2006` and `SPECIAL-ORDER`). Accepting it unpriced: **409**
+  `QUOTE_NOT_PRICED`. The dealer then priced it in the ERP (`state SENT`,
+  `total_amount 1700.00`) and the portal read back `priced: true`,
+  `unit_price 6.25` on the catalog line and `1450` on the custom door, with the
+  contractor's own `customer_note` untouched. Accepting the priced quote:
+  **200**, `erp_state ACCEPTED`. Accepting it again: **409**.
+- **project_id.** `PUT /orders/{id}/project` returned
+  `project_name "West Kelowna Medical Plaza"`, `orders.project_id` matched in
+  the database, `GET /orders?project_id=` returned exactly that order, and an
+  explicit `{"project_id": null}` detached it. A checkout carrying
+  `project_id` produced `a9c9f813-…` already filed against the job.
+- **Cancellation.** A portal-placed order: **200**,
+  `{"status":"CANCELLED","previous_status":"DRAFT"}`, `orders.status` CANCELLED
+  in the database. The same cancel again: **409** `ORDER_ALREADY_CANCELLED`. A
+  FULFILLED order on a COMPLETED route: **409** `ORDER_IN_MOTION`. Another
+  customer's order id: **404**, never 403.
+- **Reschedule.** `POST /deliveries/{id}/reschedule` → **202**,
+  `applied: false`, `status PENDING`, `current_scheduled_date "2026-08-13"`.
+  The `delivery_routes` row was `SELECT`ed before and after and is
+  **byte-for-byte identical** — same `scheduled_date`, same `updated_at`. The
+  ask landed in `portal_delivery_reschedule_requests` as PENDING; asking again
+  moved the first to SUPERSEDED rather than leaving two dates in the queue. A
+  DELIVERED stop on a COMPLETED route: **409** `DELIVERY_COMMITTED`. A delivery
+  never rescheduled: **204**, not 404.
+- **Lead time.** With one product published at `0` and one at `7`, the wire
+  carried `{"zero":1,"positive":1,"null_":82}` — `CORN2006: 0`,
+  `CORN2009: 7`, `CORNCLEAR: null`. Three states, three values.
+- **Volume breaks.** With no dealer rule the ladder is `[]`. After the dealer
+  published QUANTITY_BREAK rules at 100 and 500,
+  `GET /catalog/{id}/volume-breaks` returned **one** rung —
+  `{"min_quantity":500,"unit_price":4.1,"price_source":"QUANTITY_BREAK","saves_per_unit":0.36}`.
+  The 100 rung was dropped by `gable` because at that quantity it did not beat
+  this customer's TIER price, which is the ladder behaving correctly.
+- **Category tree.** `GET /catalog/categories` returned the real hierarchy —
+  Lumber (19) over Framing/Sheathing/Engineered, Hardware (8) over
+  Fasteners/Connectors, plus Roofing (13), Insulation (3), Concrete, General.
+  `?category_id=<Hardware>` narrowed 84 products to **8**, matching the
+  subtree count on the node.
+- **Change feed.** First read: `ETag "2f4305839ec4aaf82882539b2dd28bb5"`,
+  `X-Portal-Latest-Change 2026-08-25T01:48:24.858566Z`,
+  `Cache-Control: private, no-cache, must-revalidate`, 7 orders. With
+  `If-None-Match`: **304, 0 bytes**. `?since=<cursor>`: `[]`. The dealer then
+  moved one order to `ON_HOLD` in the database; `?since=<cursor>` returned
+  exactly that one order, and the stale ETag went back to 200. A fresh
+  validator 304s again.
+
+#### Two of these are wired against demo data that does not exercise them
+
+Not defects, and worth stating so nobody concludes the wiring is broken from a
+demo:
+
+- **Every product in the seed has `lead_time_days` NULL.** `gable_fresh` ships
+  68 products and none of them publishes a lead time, so a wired portal shows
+  "your supplier has not published a lead time" on all of them and the
+  lead-time warnings stay silent everywhere. That is the correct rendering of
+  the data; it is also invisible proof. A dealer publishing one number makes
+  the whole path visible.
+- **The seed's 136 QUANTITY_BREAK rules mostly do not beat this customer's own
+  price.** `gable` drops a rung that is not strictly cheaper than the
+  single-unit price, and Kelbrook's TIER and CONTRACT pricing already beats most
+  of them — so most ladders come back `[]`. Publishing one rule that genuinely
+  undercuts the tier produced a real rung immediately.
+
+#### A defect this found in `gable`, reported and not worked around
+
+**Cancelling a CONFIRMED order returns 500 on the seeded database.**
+`order.CancelOrder` releases the allocation for every line of a CONFIRMED
+order, and `inventory.Release` fails with `no allocated stock found for
+product …` when the order never held one — which is true of the seeded
+CONFIRMED orders and of any order confirmed outside the allocating path. The
+customer sees `INTERNAL_ERROR`, and the order is correctly left alone by the
+transaction.
+
+It is a `gable`-side fix (either the seed must allocate, or `Release` must
+tolerate a missing allocation on cancel) and is out of scope here. What this
+repository does about it is not treat an unrecognised failure as a probable
+success: a 500 leaves the sales order's status untouched and walks the card
+back to Order, with the ERP's own sentence on the timeline. There is a test for
+exactly that in `src/core/gable/__tests__/capabilities.test.ts`.
+
 #### Wired for real
 
 | | Endpoint |
@@ -104,36 +197,121 @@ what was sent.
 | Order submission | `GET/POST/DELETE /cart[/items]` then `POST /checkout` |
 | Order status | `GET /orders`, `GET /orders/{id}`, refined by `GET /deliveries` |
 | AR | `GET /dashboard`, `GET /invoices` |
+| **Quote desk** | `GET/POST /quotes`, `GET /quotes/{id}`, `POST /quotes/{id}/accept\|decline` |
+| **Project on an order** | `project_id` on `PortalOrderDTO` and on `POST /checkout`; `GET /orders?project_id=`; `PUT /orders/{id}/project` |
+| **Order cancellation** | `POST /orders/{id}/cancel` |
+| **Delivery reschedule *request*** | `POST/GET /deliveries/{id}/reschedule` |
+| **Lead time** | `lead_time_days` on the catalog product — nullable, and the null is kept |
+| **Volume breaks** | `GET /catalog/{id}/volume-breaks`, plus `volume_breaks` on the detail DTO |
+| **Category tree** | `GET /catalog/categories`; `?category_id=` on `GET /catalog` |
+| **Change feed** | `GET /orders?since=`, `ETag` / `If-None-Match`, `X-Portal-Latest-Change` |
 
 The simulator's scheduler is **stopped** on the wired path. A real ERP drives
 state; a timer aging cards behind a live board is the exact bug that would make
 this integration worse than no integration.
 
-#### Endpoints `gable` does not have
+#### The eight capabilities, and what each one is actually allowed to claim
 
-Each of these is a thing the portal wanted and could not do. None of them is
-simulated on the wired path; each is refused or labelled in the UI.
+This section used to be titled *"Endpoints `gable` does not have"* and listed
+eight of them. Seven were closed by `gable`'s headless-portal-core pass and are
+now consumed here; the eighth (the push channel) is unchanged. What matters is
+not that they are wired but **what each one is permitted to say on screen**, so
+that is what is recorded.
 
-- **No quote resource of any kind.** There is no way to send a scope to a dealer
-  for pricing, and therefore no way to price a special-order line. The Quote
-  column keeps a local record so the stage machine's guards still hold, and says
-  so.
-- **No order cancellation.** No `POST /orders/{id}/cancel`. The portal records
-  that it could not cancel and leaves the ERP order untouched — it does *not*
-  flip the local copy to `cancelled`.
-- **No delivery reschedule.** Not on the order, not on the delivery. The action
-  is refused rather than writing a promised date no dispatcher will ever see.
-- **No lead time on a catalog product**, so the lead-time-vs-delivery-date
-  warnings — a core part of the product — go quiet when wired. Not defaulted to
-  a plausible number of days; a crew gets scheduled around that.
-- **No volume breaks on the portal catalog**, so "buy 20 more and save" goes
-  quiet too.
-- **No category tree.** `category` is a display string, so browse is flat.
-- **No project association on an order.** `PortalOrderDTO` has no `project_id`,
-  so a customer's *existing* ERP order history has nowhere to land on a
-  project-scoped board and is deliberately not imported. Orders placed through
-  the portal are tracked; orders placed before it are not visible here.
-- **No push channel.** Status is polled every 30s.
+1. **Quote desk — wired.** The Quote column sends the order's scope to
+   `POST /quotes`. The request carries no price field of any kind, by design on
+   both sides: a contractor sends a scope and the dealer prices it. A
+   special-order line goes with it — `product_id` null plus a description and a
+   unit — which is the first time a custom door has been able to leave this
+   browser. `syncQuotes` reads the dealer's prices back and writes them onto
+   the lines; accept and decline are real, and a 409 `QUOTE_NOT_PRICED` is
+   shown with the dealer's own sentence rather than "Conflict".
+   *Refuses rather than guesses:* prices are applied only when the returned
+   lines still match this order's scope, verified line by line. A mismatch
+   writes nothing, because putting one product's price on another product's
+   line is invisible to a contractor and an unpriced order is not.
+
+2. **Project on an order — wired.** Checkout files a new order against its job.
+   The customer's *existing* dealer orders are imported per project through
+   `GET /orders?project_id=`, so an order placed at the counter lands on the job
+   the **dealer** filed it against. An order the dealer filed against no job is
+   listed on the project screen as "at your supplier, not on a job yet" and is
+   **not** auto-assigned — which job it was for is the contractor's knowledge,
+   and guessing would put one site's materials on another's cost. Filing one
+   writes through `PUT /orders/{id}/project` first, so the dealer's copy and the
+   board agree.
+
+3. **Order cancellation — wired.** Dragging a placed card back to Plan calls
+   `POST /orders/{id}/cancel`. All three refusals are honoured with their own
+   codes and reasons — `ORDER_ALREADY_CANCELLED`, `ORDER_NOT_CANCELLABLE`
+   ("ask the dealer for a credit" is a different instruction from "it is already
+   cancelled"), and `ORDER_IN_MOTION`. On a refusal the card goes **back to
+   Order** and the sales order's status is untouched.
+
+4. **Delivery reschedule — wired as a REQUEST, and labelled as one.** This is
+   the capability most easily rendered as a lie. `gable` answers 202 with
+   `applied: false` and deliberately never writes `delivery_routes`; the date on
+   the dealer's board does not move. So the button says "Ask to move the
+   delivery", the sheet says *this sends a request, not a change*, the
+   confirmation says "Requested — nothing has moved until a dispatcher agrees",
+   and the board's `promisedDate` is not touched. A test asserts the message
+   never contains "moved to".
+
+5. **Lead time — wired, including its null.** `lead_time_days` is nullable and
+   the three states are kept apart: `0` is "ships today", a number is that many
+   days, and **null is "the dealer has not published one"** — rendered as
+   exactly that, never as 0. The lead-time-vs-delivery-date warning goes
+   **silent** on an unpublished lead time rather than computing against a guess.
+   This also fixed a pre-existing conflation on the portal side: a catalog line
+   with no lead time in its snapshot used to default to 0 and read as "In
+   stock".
+
+6. **Volume breaks — wired, per product.** `GET /catalog/{id}/volume-breaks` is
+   loaded for the products on an order (the order workspace is where the
+   "buy more, pay less" decision is made), not speculatively for the whole
+   catalog. Until a ladder loads, `nextBreak` is **absent**, which is the honest
+   unloaded state; a loaded-but-empty ladder is a different value, and a failed
+   load is cached as neither.
+
+7. **Category tree — wired.** `GET /catalog/categories` gives browse the
+   dealer's real `product_categories` hierarchy, so clicking "Lumber" cascades
+   to the studs filed under Framing Lumber. A product the ERP never linked keeps
+   its flat display-string aisle so it stays browsable, and a tree failure
+   degrades to the old flat behaviour rather than failing the connect.
+
+8. **Change feed — wired.** The 30-second poll is conditional: the previous
+   `ETag` goes out as `If-None-Match` and the previous
+   `X-Portal-Latest-Change` as `?since=`. A 304 does **no** work — no store
+   writes and no delivery fetch, which was the other half of every wasted poll.
+   The cursor is only advanced when the ERP actually sent one.
+
+#### What is still genuinely missing after this work
+
+- **No push channel.** `?since=` + `ETag` makes the poll cheap; it does not make
+  it a subscription. Status still arrives up to 30 seconds late.
+- **No quote-to-order conversion.** Accepting a quote closes it at the dealer
+  and puts their prices on the lines. It does **not** place an order — the order
+  still goes through cart + checkout, and a special-order line therefore still
+  cannot be *ordered* through the portal even though it can now be *priced*.
+  The UI says this next to the Accept button.
+- **Withdrawing an unpriced quote.** `gable` only lets a customer decline a
+  quote it has priced and SENT, so pulling back a request nobody has looked at
+  yet comes back 409. The portal reports that the dealer still has it rather
+  than marking it withdrawn.
+- **No unit of measure for a cubic yard.** `gable`'s `uom_type` enum has no CY.
+  A line measured in one is refused by name rather than relabelled into a unit
+  the dealer would price differently.
+- **No lead time on a quote line.** The quote DTO carries a price and no date,
+  so a desk-priced special-order line has no lead time — absent, not zero.
+- **Applying an approved reschedule.** Deliberately out of scope on the `gable`
+  side (it is a dispatch-side feature) and therefore out of scope here. The
+  request queue is the whole of it.
+- **`?category_id=` is implemented in the client and exercised by tests, but
+  browse filters locally.** The portal pulls the whole catalog once on connect
+  and cascades through the ERP's own tree client-side, which is the same result
+  for one round trip fewer. The parameter is there for a paged catalog.
+- **No order number.** `PortalOrderDTO` has an id and no human number, so cards
+  read `GBL-<first 8>` rather than a number anyone at the yard could look up.
 
 #### Two defects found by wiring it, both fixed here
 
@@ -157,6 +335,15 @@ homeowner's signing screen carries an unconditional version of it, because that
 page is reached by an unauthenticated share link and has no ERP connection to
 key off.
 
+Those three keep their labels and their labels are unchanged. What *did* change
+is the Quote column: it used to carry a "this stays in your browser" disclosure
+because nothing was sent anywhere, and it now describes a real dealer desk,
+because there is one. A capability that is genuinely wired should stop
+apologising for itself; a capability that is not must keep its label. The
+`SupplierCapabilities` record on `src/core/supplier/port.ts` is what the UI
+branches on, so the two can only disagree by someone setting a flag that is not
+true.
+
 #### Still open
 
 `gable` contains a portal-shaped surface of its own at `app/src/pages/portal/`.
@@ -164,10 +351,13 @@ Which repository is *the* contractor portal is still undecided. What is now
 settled is the seam: `backend/internal/portal/` is the contract, and this
 repository is a client of it.
 
-The UI is wired at the spine and no further. Invoices, deliveries and the
-dashboard are reachable through `src/core/gable/client.ts` and tested, but the
-Pay tab still reads the local invoice store rather than `gable`'s. That is the
-next honest increment.
+The board is now wired past the spine — quotes, cancellation, reschedule
+requests, job history, lead times, volume breaks and the category tree all run
+against `gable`. **AR is the part that has not moved.** Invoices, deliveries and
+the dashboard are reachable through `src/core/gable/client.ts` and tested, but
+the Pay tab still reads the local invoice store rather than `gable`'s, so the
+balance a contractor sees there is a seeded number next to a live board. That is
+the next honest increment.
 
 ### 2. No backend and no database *of the portal's own*
 

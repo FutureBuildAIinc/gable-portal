@@ -3,21 +3,31 @@
 import type { z } from 'zod';
 import { GableAuthError, GableHttpError, GableNetworkError, GableShapeError } from './errors';
 import {
+  type GableCancelResponse,
   type GableCart,
   type GableCatalogDetail,
   type GableCatalogFilter,
   type GableCatalogProduct,
+  type GableCategoryNode,
   type GableCheckoutRequest,
   type GableCheckoutResponse,
   type GableConfig,
+  type GableCreateQuoteRequest,
   type GableDashboard,
   type GableDelivery,
   type GableLoginResponse,
   type GableOrder,
+  type GableOrderFeed,
   type GableProject,
+  type GableQuote,
+  type GableReschedule,
+  type GableRescheduleRequest,
+  type GableVolumeBreak,
+  gableCancelResponseSchema,
   gableCartSchema,
   gableCatalogDetailSchema,
   gableCatalogListSchema,
+  gableCategoryTreeSchema,
   gableCheckoutResponseSchema,
   gableConfigSchema,
   gableDashboardSchema,
@@ -27,6 +37,10 @@ import {
   gableOrderListSchema,
   gableOrderSchema,
   gableProjectListSchema,
+  gableQuoteListSchema,
+  gableQuoteSchema,
+  gableRescheduleSchema,
+  gableVolumeBreakListSchema,
 } from './schema';
 
 /**
@@ -81,10 +95,36 @@ interface RequestOptions<T> {
   schema?: z.ZodType<T>;
   body?: unknown;
   query?: Record<string, string | undefined>;
+  headers?: Record<string, string | undefined>;
   signal?: AbortSignal | undefined;
+  /**
+   * Non-2xx statuses that are an ANSWER rather than a failure — 304 on the
+   * conditional order feed, 204 on a reschedule that was never filed. Listing
+   * them per-call rather than globally keeps a stray 304 from a route that
+   * should never send one an error, which is what it would be.
+   */
+  expect?: number[];
+}
+
+/** A response whose status and headers the caller needs, not just its body. */
+interface RawResponse<T> {
+  status: number;
+  header: (name: string) => string | undefined;
+  /** Undefined when the status was in `expect` and carried no body. */
+  data: T | undefined;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+
+/**
+ * `?since=` on the order feed. Optional cursor and optional project scope,
+ * plus the validator to send as `If-None-Match`.
+ */
+export interface GableOrderFeedQuery {
+  since?: string | undefined;
+  projectId?: string | undefined;
+  ifNoneMatch?: string | undefined;
+}
 
 export interface GableClient {
   login(email: string, password: string): Promise<GableLoginResponse>;
@@ -94,6 +134,8 @@ export interface GableClient {
 
   catalog(filter?: GableCatalogFilter, signal?: AbortSignal): Promise<GableCatalogProduct[]>;
   catalogProduct(id: string, signal?: AbortSignal): Promise<GableCatalogDetail>;
+  categories(signal?: AbortSignal): Promise<GableCategoryNode[]>;
+  volumeBreaks(productId: string, signal?: AbortSignal): Promise<GableVolumeBreak[]>;
 
   cart(signal?: AbortSignal): Promise<GableCart>;
   addCartItem(productId: string, quantity: number): Promise<GableCart>;
@@ -102,8 +144,24 @@ export interface GableClient {
   checkout(request: GableCheckoutRequest): Promise<GableCheckoutResponse>;
 
   orders(signal?: AbortSignal): Promise<GableOrder[]>;
+  /** Conditional read. Answers `{ orders: null }` on a 304 — see `GableOrderFeed`. */
+  orderFeed(query: GableOrderFeedQuery, signal?: AbortSignal): Promise<GableOrderFeed>;
   order(id: string, signal?: AbortSignal): Promise<GableOrder>;
+  cancelOrder(id: string, reason: string): Promise<GableCancelResponse>;
+  /** `null` detaches the order from its project. */
+  setOrderProject(id: string, projectId: string | null): Promise<GableOrder>;
+
   deliveries(signal?: AbortSignal): Promise<GableDelivery[]>;
+  requestReschedule(deliveryId: string, request: GableRescheduleRequest): Promise<GableReschedule>;
+  /** `null` when this customer has never filed one for that delivery (204). */
+  reschedule(deliveryId: string, signal?: AbortSignal): Promise<GableReschedule | null>;
+
+  quotes(signal?: AbortSignal): Promise<GableQuote[]>;
+  quote(id: string, signal?: AbortSignal): Promise<GableQuote>;
+  createQuote(request: GableCreateQuoteRequest): Promise<GableQuote>;
+  acceptQuote(id: string): Promise<GableQuote>;
+  declineQuote(id: string): Promise<GableQuote>;
+
   projects(signal?: AbortSignal): Promise<GableProject[]>;
 }
 
@@ -130,13 +188,29 @@ function withQuery(url: string, query: Record<string, string | undefined> | unde
   return parts.length > 0 ? `${url}?${parts.join('&')}` : url;
 }
 
-/** The ERP's own sentence, if it sent one. Never fabricated. */
-function detailFrom(raw: string): string | undefined {
+/**
+ * The ERP's own words, if it sent any. Never fabricated.
+ *
+ * `reason` only appears on a 409 refusal and is the one message `gable`
+ * deliberately does NOT scrub — it is hand-written, contains no ids and no
+ * table names, and is the only thing a consumer can put in front of a
+ * contractor when the dealer says no.
+ */
+function errorBodyFrom(raw: string): {
+  message: string | undefined;
+  code: string | undefined;
+  reason: string | undefined;
+} {
   try {
     const parsed = gableErrorSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data.error.message : undefined;
+    if (!parsed.success) return { message: undefined, code: undefined, reason: undefined };
+    return {
+      message: parsed.data.error.message,
+      code: parsed.data.error.code,
+      reason: parsed.data.error.reason,
+    };
   } catch {
-    return undefined;
+    return { message: undefined, code: undefined, reason: undefined };
   }
 }
 
@@ -144,7 +218,7 @@ export function createGableClient(options: GableClientOptions): GableClient {
   const doFetch = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  async function request<T>(request: RequestOptions<T>): Promise<T> {
+  async function requestRaw<T>(request: RequestOptions<T>): Promise<RawResponse<T>> {
     const url = withQuery(joinUrl(options.baseUrl, request.path), request.query);
 
     const controller = new AbortController();
@@ -165,6 +239,14 @@ export function createGableClient(options: GableClientOptions): GableClient {
         headers: {
           Accept: 'application/json',
           ...(request.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          // An undefined value would serialise as the string "undefined" and
+          // an empty `If-None-Match` is a header the ERP has to parse for
+          // nothing, so both are dropped rather than sent.
+          ...Object.fromEntries(
+            Object.entries(request.headers ?? {}).filter(
+              (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '',
+            ),
+          ),
         },
         ...(request.body !== undefined ? { body: JSON.stringify(request.body) } : {}),
         signal: controller.signal,
@@ -184,6 +266,14 @@ export function createGableClient(options: GableClientOptions): GableClient {
     // Read once: a Response body is a one-shot stream, and reading it twice to
     // "try JSON then fall back to text" throws on the second read.
     const raw = await response.text().catch(() => '');
+    const header = (name: string): string | undefined => response.headers?.get(name) ?? undefined;
+
+    // A status the caller asked about explicitly — 304 "nothing moved", 204
+    // "there is no such record yet". Both are answers, and neither has a body
+    // worth parsing.
+    if (request.expect?.includes(response.status)) {
+      return { status: response.status, header, data: undefined };
+    }
 
     if (response.status === 401) {
       // Terminal. No retry, no re-issue, no silent re-login. See the class
@@ -203,14 +293,16 @@ export function createGableClient(options: GableClientOptions): GableClient {
     }
 
     if (!response.ok) {
+      const body = errorBodyFrom(raw);
       throw new GableHttpError(
         response.status,
         `The supplier refused ${request.method} ${request.path} (HTTP ${response.status}).`,
-        detailFrom(raw),
+        body.message,
+        { code: body.code, reason: body.reason },
       );
     }
 
-    if (!request.schema) return undefined as T;
+    if (!request.schema) return { status: response.status, header, data: undefined };
 
     let parsedJson: unknown;
     try {
@@ -226,7 +318,13 @@ export function createGableClient(options: GableClientOptions): GableClient {
         result.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`),
       );
     }
-    return result.data;
+    return { status: response.status, header, data: result.data };
+  }
+
+  /** The common case: a 2xx whose body is the answer. */
+  async function request<T>(options: RequestOptions<T>): Promise<T> {
+    const { data } = await requestRaw(options);
+    return data as T;
   }
 
   return {
@@ -254,6 +352,7 @@ export function createGableClient(options: GableClientOptions): GableClient {
         query: {
           q: filter?.q,
           category: filter?.category,
+          category_id: filter?.category_id,
           species: filter?.species,
           grade: filter?.grade,
         },
@@ -265,6 +364,24 @@ export function createGableClient(options: GableClientOptions): GableClient {
         method: 'GET',
         path: `/catalog/${encodeURIComponent(id)}`,
         schema: gableCatalogDetailSchema,
+        signal,
+      }),
+
+    // Registered on `gable` before the `{id}` pattern; Go 1.22's mux resolves
+    // by specificity, so `categories` is never read as a product id.
+    categories: (signal) =>
+      request({
+        method: 'GET',
+        path: '/catalog/categories',
+        schema: gableCategoryTreeSchema,
+        signal,
+      }),
+
+    volumeBreaks: (productId, signal) =>
+      request({
+        method: 'GET',
+        path: `/catalog/${encodeURIComponent(productId)}/volume-breaks`,
+        schema: gableVolumeBreakListSchema,
         signal,
       }),
 
@@ -304,6 +421,25 @@ export function createGableClient(options: GableClientOptions): GableClient {
     orders: (signal) =>
       request({ method: 'GET', path: '/orders', schema: gableOrderListSchema, signal }),
 
+    orderFeed: async (query, signal) => {
+      const raw = await requestRaw({
+        method: 'GET',
+        path: '/orders',
+        schema: gableOrderListSchema,
+        query: { since: query.since, project_id: query.projectId },
+        headers: { 'If-None-Match': query.ifNoneMatch },
+        // 304 is the point of the call, not a failure.
+        expect: [304],
+        signal,
+      });
+
+      return {
+        orders: raw.status === 304 ? null : (raw.data ?? []),
+        etag: raw.header('ETag'),
+        latestChange: raw.header('X-Portal-Latest-Change'),
+      };
+    },
+
     order: (id, signal) =>
       request({
         method: 'GET',
@@ -312,8 +448,79 @@ export function createGableClient(options: GableClientOptions): GableClient {
         signal,
       }),
 
+    cancelOrder: (id, reason) =>
+      request({
+        method: 'POST',
+        path: `/orders/${encodeURIComponent(id)}/cancel`,
+        body: { reason },
+        schema: gableCancelResponseSchema,
+      }),
+
+    setOrderProject: (id, projectId) =>
+      request({
+        method: 'PUT',
+        path: `/orders/${encodeURIComponent(id)}/project`,
+        // Explicit null, not an omitted key: null is what detaches the order,
+        // and `JSON.stringify` would drop an `undefined` and send `{}`, which
+        // `gable` decodes as a nil pointer and treats as a detach anyway —
+        // by accident rather than by instruction.
+        body: { project_id: projectId },
+        schema: gableOrderSchema,
+      }),
+
     deliveries: (signal) =>
       request({ method: 'GET', path: '/deliveries', schema: gableDeliveryListSchema, signal }),
+
+    // 202 Accepted. The ask is recorded; the schedule is NOT changed. The
+    // returned DTO says so in `applied`.
+    requestReschedule: (deliveryId, rescheduleRequest) =>
+      request({
+        method: 'POST',
+        path: `/deliveries/${encodeURIComponent(deliveryId)}/reschedule`,
+        body: rescheduleRequest,
+        schema: gableRescheduleSchema,
+      }),
+
+    reschedule: async (deliveryId, signal) => {
+      const raw = await requestRaw({
+        method: 'GET',
+        path: `/deliveries/${encodeURIComponent(deliveryId)}/reschedule`,
+        schema: gableRescheduleSchema,
+        // 204: the delivery is the caller's and no request was ever filed.
+        // That is not a 404 and must not read as one.
+        expect: [204],
+        signal,
+      });
+      return raw.data ?? null;
+    },
+
+    quotes: (signal) =>
+      request({ method: 'GET', path: '/quotes', schema: gableQuoteListSchema, signal }),
+
+    quote: (id, signal) =>
+      request({
+        method: 'GET',
+        path: `/quotes/${encodeURIComponent(id)}`,
+        schema: gableQuoteSchema,
+        signal,
+      }),
+
+    createQuote: (quoteRequest) =>
+      request({ method: 'POST', path: '/quotes', body: quoteRequest, schema: gableQuoteSchema }),
+
+    acceptQuote: (id) =>
+      request({
+        method: 'POST',
+        path: `/quotes/${encodeURIComponent(id)}/accept`,
+        schema: gableQuoteSchema,
+      }),
+
+    declineQuote: (id) =>
+      request({
+        method: 'POST',
+        path: `/quotes/${encodeURIComponent(id)}/decline`,
+        schema: gableQuoteSchema,
+      }),
 
     projects: (signal) =>
       request({ method: 'GET', path: '/projects', schema: gableProjectListSchema, signal }),

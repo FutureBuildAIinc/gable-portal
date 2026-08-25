@@ -8,6 +8,7 @@ import { type OrderTotals, orderTotals } from '../domain/totals';
 import type { Cents } from '../lib/money';
 import type { Collection } from '../stores/store';
 import { listOf } from '../stores/store';
+import { ASSUMED_SPECIAL_LEAD_DAYS } from './order';
 
 /**
  * Read models for the board. Pure functions over store snapshots, so the same
@@ -102,9 +103,15 @@ export function buildBoardCards(
       if (thumbUrls.length === 3) break;
     }
 
+    // The longest lead time anyone has actually published for this order.
+    // A line with none contributes nothing — it cannot lengthen a maximum it
+    // has no number for, and inventing one would light the card's lead-time
+    // risk flag on a guess. `buildOrderDetail` draws the same line and for the
+    // same reason; see `ASSUMED_SPECIAL_LEAD_DAYS`.
     let maxLeadTimeDays = 0;
     for (const item of items) {
-      const lead = item.snapshot.leadTimeDays ?? (item.kind === 'special' ? 21 : 0);
+      const lead =
+        item.snapshot.leadTimeDays ?? (item.kind === 'special' ? ASSUMED_SPECIAL_LEAD_DAYS : 0);
       if (lead > maxLeadTimeDays) maxLeadTimeDays = lead;
     }
 

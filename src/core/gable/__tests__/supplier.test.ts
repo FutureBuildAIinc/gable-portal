@@ -139,11 +139,26 @@ function stubClient(overrides: Partial<GableClient> = {}, seedCart: Stub['cartIt
       return { order_id: PLACED_ORDER.id, message: 'Order placed successfully' };
     }),
     orders: vi.fn(async () => [PLACED_ORDER]),
+    orderFeed: vi.fn(async () => {
+      calls.push('orderFeed');
+      return { orders: [PLACED_ORDER], etag: '"v1"', latestChange: undefined };
+    }),
     order: vi.fn(async () => {
       calls.push('order');
       return PLACED_ORDER;
     }),
+    cancelOrder: vi.fn(),
+    setOrderProject: vi.fn(),
     deliveries: vi.fn(async () => []),
+    requestReschedule: vi.fn(),
+    reschedule: vi.fn(async () => null),
+    categories: vi.fn(async () => []),
+    volumeBreaks: vi.fn(async () => []),
+    quotes: vi.fn(async () => []),
+    quote: vi.fn(),
+    createQuote: vi.fn(),
+    acceptQuote: vi.fn(),
+    declineQuote: vi.fn(),
     projects: vi.fn(async () => []),
     ...overrides,
   } as GableClient;
@@ -306,43 +321,21 @@ describe('a refused order does not leave a card claiming otherwise', () => {
   });
 });
 
-describe('what gable cannot do is said, not simulated', () => {
-  it('creates a quote record locally and sends nothing', () => {
-    const stub = stubClient();
-    wire(stub.client);
-    const orderId = plannedOrder();
-
-    getContext().supplier.submitToQuoteDesk(orderId);
-
-    const quote = listOf(quotesStore.get())[0];
-    expect(quote?.number.startsWith('LOCAL-')).toBe(true);
-    // No expiry: an expiry implies a price is being held, and nobody at the
-    // dealer has seen this.
-    expect(quote?.expiresAt).toBeUndefined();
-    expect(quote?.deskNote).toContain('Kelly-Fradet');
-    expect(stub.calls).toEqual([]);
-  });
-
-  it('reports that it has no quote desk, so the UI can label the column', () => {
+describe('the capability inventory is the honest one', () => {
+  it('declares a real quote desk, a real cancel, and a reschedule that only REQUESTS', () => {
     wire(stubClient().client);
-    expect(getContext().supplier.hasQuoteDesk).toBe(false);
-    expect(getContext().supplier.kind).toBe('gable');
-  });
+    const { capabilities, kind } = getContext().supplier;
 
-  it('does not flip an order to cancelled — gable has no cancel endpoint', async () => {
-    const stub = stubClient();
-    wire(stub.client);
-    const orderId = plannedOrder();
-    moveOrderToStage(orderId, 'order');
-    await vi.waitFor(() => expect(stub.calls).toContain('checkout'));
-
-    getContext().supplier.cancelWithSupplier(orderId);
-
-    const salesOrder = salesOrdersStore.get().byId[`gso_${PLACED_ORDER.id}`];
-    // Status UNCHANGED. Showing `cancelled` would assert something about the
-    // ERP that is not true.
-    expect(salesOrder?.status).toBe('confirmed');
-    expect(salesOrder?.tracking.at(-1)?.note).toContain('cannot cancel');
+    expect(kind).toBe('gable');
+    // All three of these used to be refusals in this file, because `gable` had
+    // no endpoint for any of them.
+    expect(capabilities.quoteDesk).toBe(true);
+    expect(capabilities.quoteDecisions).toBe(true);
+    expect(capabilities.cancellation).toBe(true);
+    // The one that must NOT become `applies`: `POST /deliveries/{id}/reschedule`
+    // answers 202 with `applied: false` and never writes `delivery_routes`.
+    expect(capabilities.reschedule).toBe('requests');
+    expect(capabilities.changeFeed).toBe(true);
   });
 });
 
@@ -350,7 +343,11 @@ describe('status is read from the ERP, not advanced by a timer', () => {
   it('adopts a status change on the next poll', async () => {
     let current: GableOrder = PLACED_ORDER;
     const stub = stubClient({
-      orders: vi.fn(async () => [current]) as GableClient['orders'],
+      orderFeed: vi.fn(async () => ({
+        orders: [current],
+        etag: '"v1"',
+        latestChange: undefined,
+      })) as GableClient['orderFeed'],
     });
     wire(stub.client);
     const orderId = plannedOrder();
@@ -358,13 +355,14 @@ describe('status is read from the ERP, not advanced by a timer', () => {
     await vi.waitFor(() => expect(stub.calls).toContain('checkout'));
 
     current = { ...PLACED_ORDER, status: 'FULFILLED' };
-    const changed = await syncOrderStatus({
+    const result = await syncOrderStatus({
       client: stub.client,
       nowIso: () => getContext().clock.nowIso(),
       dealerName: 'Kelly-Fradet',
     });
 
-    expect(changed).toBe(1);
+    expect(result.changed).toBe(1);
+    expect(result.notModified).toBe(false);
     expect(salesOrdersStore.get().byId[`gso_${PLACED_ORDER.id}`]?.status).toBe('delivered');
   });
 
@@ -374,19 +372,28 @@ describe('status is read from the ERP, not advanced by a timer', () => {
     const stub = stubClient();
     wire(stub.client);
 
-    const changed = await syncOrderStatus({
+    const result = await syncOrderStatus({
       client: stub.client,
       nowIso: () => getContext().clock.nowIso(),
       dealerName: 'Kelly-Fradet',
     });
 
-    expect(changed).toBe(0);
+    expect(result.changed).toBe(0);
     expect(listOf(salesOrdersStore.get())).toHaveLength(0);
+    // And no delivery read either: the feed page held nothing this board knows
+    // about, so there was nothing to refine.
+    expect(stub.client.deliveries).not.toHaveBeenCalled();
   });
 
   it('keeps the observed history rather than replacing it with one data point', async () => {
     let current: GableOrder = PLACED_ORDER;
-    const stub = stubClient({ orders: vi.fn(async () => [current]) as GableClient['orders'] });
+    const stub = stubClient({
+      orderFeed: vi.fn(async () => ({
+        orders: [current],
+        etag: '"v1"',
+        latestChange: undefined,
+      })) as GableClient['orderFeed'],
+    });
     wire(stub.client);
     const orderId = plannedOrder();
     moveOrderToStage(orderId, 'order');

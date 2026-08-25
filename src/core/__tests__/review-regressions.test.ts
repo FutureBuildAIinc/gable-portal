@@ -215,12 +215,15 @@ describe('will-call pickup timing', () => {
     skipUntil(() => salesOrderFor(MILLER_FRAME)?.status === 'ready-willcall', 'staging');
   }
 
-  it('rescheduling the pickup re-times the auto-collect, not just the label', () => {
+  it('rescheduling the pickup re-times the auto-collect, not just the label', async () => {
     placeWillCall();
 
     const newPickup = addDays(getContext().clock.nowIso(), 6);
-    const rescheduled = requestDeliveryReschedule(MILLER_FRAME, newPickup);
+    // Asynchronous since the reschedule goes through the supplier port: the
+    // simulator applies it, a real ERP records a request. Same call either way.
+    const rescheduled = await requestDeliveryReschedule(MILLER_FRAME, newPickup);
     expect(rescheduled.ok).toBe(true);
+    if (rescheduled.ok) expect(rescheduled.value.applied).toBe(true);
 
     // Run the world forward to just before the new pickup day.
     control().advanceDays(4);

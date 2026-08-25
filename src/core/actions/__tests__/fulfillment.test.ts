@@ -167,19 +167,21 @@ describe('will-call and delivery track differently', () => {
 describe('rescheduling', () => {
   beforeEach(() => boot({ reset: true, seed: 20_260_730 }));
 
-  it('moves the promised date and says so on the timeline', () => {
+  it('moves the promised date and says so on the timeline', async () => {
     place();
     const wanted = addDays(getContext().clock.nowIso(), 20);
 
-    const result = requestDeliveryReschedule(FRAME, wanted);
+    const result = await requestDeliveryReschedule(FRAME, wanted);
     expect(result.ok).toBe(true);
+    // The simulator IS the supplier, so it is entitled to say the date moved.
+    if (result.ok) expect(result.value.applied).toBe(true);
 
     expect(salesOrder().promisedDate).toBe(wanted);
     expect(ordersStore.get().byId[FRAME]?.requestedDate).toBe(wanted);
     expect(salesOrder().tracking.at(-1)?.note).toContain('at your request');
   });
 
-  it('re-times a truck that was already scheduled to roll', () => {
+  it('re-times a truck that was already scheduled to roll', async () => {
     place();
     runSteps(3); // staged — the dispatch moment is now fixed
 
@@ -189,7 +191,7 @@ describe('rescheduling', () => {
     expect(before).toBeTruthy();
 
     const wanted = addDays(getContext().clock.nowIso(), 25);
-    expect(requestDeliveryReschedule(FRAME, wanted).ok).toBe(true);
+    expect((await requestDeliveryReschedule(FRAME, wanted)).ok).toBe(true);
 
     const after = getContext()
       .sim.scheduler.tasks()
@@ -203,12 +205,12 @@ describe('rescheduling', () => {
     ).toHaveLength(1);
   });
 
-  it('refuses once the truck is already rolling', () => {
+  it('refuses once the truck is already rolling', async () => {
     place();
     runSteps(4); // out for delivery
 
     expect(salesOrder().status).toBe('out-for-delivery');
-    const result = requestDeliveryReschedule(FRAME, addDays(getContext().clock.nowIso(), 20));
+    const result = await requestDeliveryReschedule(FRAME, addDays(getContext().clock.nowIso(), 20));
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('truck');
@@ -216,16 +218,16 @@ describe('rescheduling', () => {
     expect(salesOrder().promisedDate).not.toBe(addDays(getContext().clock.nowIso(), 20));
   });
 
-  it('refuses a date that has already passed', () => {
+  it('refuses a date that has already passed', async () => {
     place();
-    const result = requestDeliveryReschedule(FRAME, addDays(getContext().clock.nowIso(), -3));
+    const result = await requestDeliveryReschedule(FRAME, addDays(getContext().clock.nowIso(), -3));
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('passed');
   });
 
-  it('refuses on an order the supplier does not have yet', () => {
-    const result = requestDeliveryReschedule(FRAME, addDays(getContext().clock.nowIso(), 5));
+  it('refuses on an order the supplier does not have yet', async () => {
+    const result = await requestDeliveryReschedule(FRAME, addDays(getContext().clock.nowIso(), 5));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('placed');
   });

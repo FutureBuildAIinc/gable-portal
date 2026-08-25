@@ -78,10 +78,21 @@ export interface Product {
   specs: SpecPair[];
 
   /**
-   * Days until available if not on hand. 0 means stocked.
-   * Drives the lead-time-vs-delivery-date warnings that are core to the product.
+   * Days until available if not on hand.
+   *
+   * Three distinct values, and conflating any two of them is a bug someone
+   * schedules a crew around:
+   *
+   *   `0`         — stocked, ships today.
+   *   a number    — that many days.
+   *   ABSENT      — the supplier has not published one. NOT zero, NOT a
+   *                 default, NOT "unknown so assume in stock".
+   *
+   * `gable` sends `lead_time_days: null` for the third case and the mapper
+   * keeps it absent all the way here, so the lead-time-vs-delivery-date
+   * warnings stay SILENT rather than computing against a guess.
    */
-  leadTimeDays: number;
+  leadTimeDays?: number;
   stock: StockLevel[];
 
   /** Used by takeoff math: how much one unit covers. */

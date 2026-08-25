@@ -75,6 +75,7 @@ export function OrderTrackingPage({ orderId, onBack }: Props) {
   const [toast, setToast] = useState<string | null>(null);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [pickedDate, setPickedDate] = useState('');
+  const [sending, setSending] = useState(false);
   // null means "showing what's stored" — avoids an effect to resync the field
   // when the sim writes to the order underneath us.
   const [draftNotes, setDraftNotes] = useState<string | null>(null);
@@ -111,20 +112,40 @@ export function OrderTrackingPage({ orderId, onBack }: Props) {
 
   const { order, project, salesOrder, steps, willCall, promisedDate, late, cancelled } = tracking;
   const notesLocked = isDispatched(salesOrder.status);
+  /**
+   * Whether this supplier APPLIES a date change or only RECORDS the ask.
+   *
+   * Read from the installed port rather than from `kind`, so the sentence
+   * follows the capability instead of the brand: any supplier that files
+   * requests gets the request wording, and any supplier that genuinely moves
+   * the date gets the confirmation wording.
+   */
+  const requestsOnly = getContext().supplier.capabilities.reschedule === 'requests';
   const storedNotes = order.siteInstructions ?? '';
   const notes = draftNotes ?? storedNotes;
   const notesDirty = draftNotes !== null && draftNotes.trim() !== storedNotes;
 
-  function handleReschedule() {
+  /**
+   * The supplier's answer, verbatim.
+   *
+   * `result.value.message` is written by whichever implementation can honour
+   * it: the simulator says "Moved to Friday" because it moved it, and `gable`
+   * says "Requested — nothing has moved until a dispatcher agrees" because it
+   * filed a request against a route it deliberately does not write. This
+   * component must not compose that sentence itself — a hardcoded "Moved to
+   * {date}" here is precisely the lie the reschedule wiring exists to avoid.
+   */
+  async function handleReschedule() {
     if (!pickedDate) return;
-    const wanted = isoFromDateInput(pickedDate);
-    const result = requestDeliveryReschedule(orderId, wanted);
+    setSending(true);
+    const result = await requestDeliveryReschedule(orderId, isoFromDateInput(pickedDate));
+    setSending(false);
     if (!result.ok) {
       flash(result.error);
       return;
     }
     setRescheduleOpen(false);
-    flash(`Moved to ${formatDate(wanted)}`);
+    flash(result.value.message);
   }
 
   return (
@@ -278,7 +299,16 @@ export function OrderTrackingPage({ orderId, onBack }: Props) {
               }}
             >
               <CalendarClock size={17} strokeWidth={2} />
-              {tracking.canConfirmPickup ? 'Move' : `Move the ${willCall ? 'pickup' : 'delivery'}`}
+              {/* "Ask to move" when the supplier can only record a request.
+                  A button labelled "Move the delivery" that files a pending
+                  ask is a promise the button cannot keep. */}
+              {tracking.canConfirmPickup
+                ? requestsOnly
+                  ? 'Ask'
+                  : 'Move'
+                : requestsOnly
+                  ? `Ask to move the ${willCall ? 'pickup' : 'delivery'}`
+                  : `Move the ${willCall ? 'pickup' : 'delivery'}`}
             </Button>
           ) : null}
         </div>
@@ -292,8 +322,13 @@ export function OrderTrackingPage({ orderId, onBack }: Props) {
           promisedDate ? formatDate(promisedDate) : 'undated'
         }`}
         footer={
-          <Button full size="lg" disabled={!pickedDate} onClick={handleReschedule}>
-            Request this date
+          <Button
+            full
+            size="lg"
+            disabled={!pickedDate || sending}
+            onClick={() => void handleReschedule()}
+          >
+            {sending ? 'Sending…' : requestsOnly ? 'Send this request' : 'Request this date'}
           </Button>
         }
       >
@@ -308,10 +343,28 @@ export function OrderTrackingPage({ orderId, onBack }: Props) {
           onChange={(event) => setPickedDate(event.target.value)}
           className="mt-2 min-h-11 w-full rounded-lg border border-border bg-surface-inset px-3 text-[15px] tabular-nums focus:outline-2 focus:outline-offset-1 focus:outline-brand"
         />
-        <p className="mt-3 text-[12.5px] leading-relaxed text-text-muted">
-          {supplierName()} won't dispatch before the date you ask for, so moving it out holds the
-          load at the yard rather than sending it early.
-        </p>
+
+        {/* The single most important sentence on this screen when wired.
+            `gable` records the ask and returns 202 with `applied: false`; the
+            dealer's delivery_routes row is untouched and a dispatcher decides.
+            A contractor who reads "moved" and sends a crew is worse off than
+            one who reads "requested" and calls. */}
+        {requestsOnly ? (
+          <p className="mt-3 flex items-start gap-2 rounded-lg border border-border bg-surface-3 px-3 py-2 text-[12.5px] leading-relaxed text-text-muted">
+            <AlertTriangle size={14} strokeWidth={2.2} className="mt-0.5 shrink-0" />
+            <span>
+              This sends a <strong className="text-text">request</strong>, not a change.{' '}
+              {supplierName()}'s schedule keeps saying{' '}
+              {promisedDate ? formatDate(promisedDate) : 'what it says now'} until one of their
+              dispatchers agrees. Do not book a crew on the new date until they confirm.
+            </span>
+          </p>
+        ) : (
+          <p className="mt-3 text-[12.5px] leading-relaxed text-text-muted">
+            {supplierName()} won't dispatch before the date you ask for, so moving it out holds the
+            load at the yard rather than sending it early.
+          </p>
+        )}
       </Sheet>
 
       {toast ? (

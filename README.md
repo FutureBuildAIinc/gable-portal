@@ -162,8 +162,18 @@ and reads **Live — <dealer>**.
 | **Pricing** | `gable` | `customer_price` from the ERP's own waterfall (contract → promotional → tier → retail). No tier table on this side. |
 | **Projects** | `gable` | `GET /projects` replaces the seeded projects. |
 | **Order submission** | `gable` | The board's Plan → Order drag clears the ERP cart, adds this order's lines, and checks out. A real `orders` row appears in the dealer's database. |
-| **Order status** | `gable` | Polled from `GET /orders` and refined by `GET /deliveries`. **The simulator's scheduler is stopped** — a real ERP drives state, not a timer. |
+| **Order status** | `gable` | A **conditional** poll of `GET /orders` with `ETag` / `If-None-Match` and an `X-Portal-Latest-Change` cursor, refined by `GET /deliveries` only when something moved. **The simulator's scheduler is stopped** — a real ERP drives state, not a timer. |
+| **The quote desk** | `gable` | The Quote column sends the scope to `POST /quotes` — including special-order lines the catalog cannot express. A person at the dealer prices it; the price is read back and written onto the lines. Accept/decline are `POST /quotes/{id}/accept\|decline`. |
+| **Cancelling a placed order** | `gable` | `POST /orders/{id}/cancel`. A refusal (already cancelled, fulfilled, goods on a dispatched route) puts the card back in Order and shows the dealer's own reason. |
+| **Rescheduling a delivery** | `gable` | `POST /deliveries/{id}/reschedule` — a **request**, not a write. It answers 202 with `applied: false` and the dealer's schedule is untouched; the UI says "requested" and never "moved". |
+| **Job history** | `gable` | `project_id` on the order plus `GET /orders?project_id=` lands the customer's *existing* dealer orders on the job the dealer filed them against. Orders with no job are listed, not guessed at; `PUT /orders/{id}/project` files one. |
+| **Lead time, volume breaks, aisles** | `gable` | `lead_time_days` (nullable — see below), `GET /catalog/{id}/volume-breaks`, and `GET /catalog/categories`. |
 | **Invoices, deliveries, dashboard** | `gable` | Available through the client (`src/core/gable/client.ts`); the board reads status and deliveries today. |
+
+A **null** `lead_time_days` means the dealer has published none. It is not
+folded into `0` and not replaced with a guess: the product reads "no lead time
+published" and the lead-time-vs-delivery-date warning stays silent, because a
+crew gets booked around that number.
 
 ### What is still portal-local, and is labelled as such in the UI
 
@@ -172,12 +182,9 @@ and reads **Live — <dealer>**.
 | **The Plan stage** | A draft scope is the contractor's working notebook. The dealer never sees it, and `gable` has no draft resource. |
 | **Customer quote — markup, labour, overhead** | This is the contractor's own margin. The dealer must never see it, and `gable` has no endpoint that would carry it. |
 | **E-signature** | A `localStorage` record. It would not survive a dispute. Stated on the homeowner's own screen, not only in the contractor's. |
-| **The quote desk** | `gable`'s portal API has **no quote resource at all**. On the wired path the Quote column keeps a local record so the board's guards still hold, and says plainly that nothing was sent. |
-| **Cancelling a placed order** | There is no cancel endpoint. The portal records that it could not cancel, leaves the ERP order untouched, and tells you to call the yard. It does **not** flip the local record to cancelled. |
-| **Rescheduling a delivery** | No reschedule endpoint either, so the action is refused rather than writing a date the dispatcher will never see. |
 
-Every one of those gaps is listed as a missing `gable` endpoint in
-[ROADMAP.md §1](ROADMAP.md).
+Those three, and what genuinely remains missing on the `gable` side, are listed
+in [ROADMAP.md §1](ROADMAP.md).
 
 ### How the connection is shaped, and why
 

@@ -29,7 +29,13 @@ export interface CatalogRow {
   quote: PriceQuote | undefined;
   onHand: number;
   stocked: boolean;
-  leadTimeDays: number;
+  /**
+   * The supplier's published lead time, or undefined when it has published
+   * none. Undefined is NOT zero — see `Product.leadTimeDays`. A row that shows
+   * "special order — 0 days" for a product nobody has dated is exactly the
+   * fiction the lead-time work exists to remove.
+   */
+  leadTimeDays: number | undefined;
 }
 
 export interface CatalogBranch {

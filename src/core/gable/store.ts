@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
 // SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
 import { type Store, createStore } from '../stores/store';
-import type { GableConfig, GableUser } from './schema';
+import type { GableConfig, GableOrder, GableUser } from './schema';
 
 /**
  * What the portal knows about its link to the ERP, as a store so the UI can
@@ -42,6 +42,30 @@ export interface GableState {
   syncing: boolean;
   /** Count of ERP round trips this session — surfaced in the connection sheet. */
   requestCount: number;
+
+  /**
+   * The change feed's two primitives, carried between polls.
+   *
+   * `feedCursor` is `X-Portal-Latest-Change` and goes back as `?since=`;
+   * `feedEtag` is the `ETag` and goes back as `If-None-Match`. Neither is
+   * persisted, for the same reason nothing else in this store is: a cursor
+   * restored from yesterday would make the first poll of a new session skip
+   * everything that changed while the tab was closed.
+   */
+  feedCursor: string | null;
+  feedEtag: string | null;
+  /** True when the last poll was answered 304 — nothing moved. */
+  lastPollNotModified: boolean;
+
+  /**
+   * Dealer-side orders that belong to no job.
+   *
+   * Real purchases on the contractor's account with nowhere to land on a
+   * project-scoped board. Held here rather than forced onto a project so the
+   * contractor files them, not the portal — `PUT /orders/{id}/project` is the
+   * write behind that.
+   */
+  unassignedOrders: GableOrder[];
 }
 
 export const INITIAL_GABLE_STATE: GableState = {
@@ -52,6 +76,10 @@ export const INITIAL_GABLE_STATE: GableState = {
   lastSyncAt: null,
   syncing: false,
   requestCount: 0,
+  feedCursor: null,
+  feedEtag: null,
+  lastPollNotModified: false,
+  unassignedOrders: [],
 };
 
 export const gableStore: Store<GableState> = createStore<GableState>(INITIAL_GABLE_STATE);

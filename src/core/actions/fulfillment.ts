@@ -7,7 +7,7 @@ import type { Order } from '../domain/project';
 import { SALES_ORDER_LABELS, type SalesOrder, type TrackingEvent } from '../domain/supplier';
 import { newId } from '../lib/ids';
 import { type Result, err, ok } from '../lib/result';
-import { DAY_MS, type IsoDateTime, formatDate, fromIso, startOfDay } from '../lib/time';
+import { type IsoDateTime, fromIso, startOfDay } from '../lib/time';
 import { isDispatched } from '../selectors/tracking';
 import { SIM } from '../sim/config';
 import { activityStore, ordersStore, salesOrdersStore } from '../stores/root';
@@ -115,38 +115,64 @@ export function confirmWillCallPickup(orderId: string): Result<SalesOrder> {
 }
 
 export interface RescheduleResult {
-  order: Order;
-  salesOrder: SalesOrder;
+  /**
+   * True only when the SUPPLIER moved the date.
+   *
+   * Standalone this is always true — the simulator is the whole supplier and
+   * its board is this board. Wired to `gable` it is always false: the endpoint
+   * returns 202 with `applied: false`, deliberately does not touch
+   * `delivery_routes`, and a dispatcher decides. The UI must branch on this and
+   * say "requested" rather than "moved", because a contractor who believes a
+   * delivery moved when it has not sends a crew to an empty site.
+   */
+  applied: boolean;
+  /** The date that was asked for. */
+  requestedDate: IsoDateTime;
+  /** What the supplier's own board says, when it told us. */
+  currentScheduledDate?: IsoDateTime;
+  /** The supplier's own status word: APPLIED, PENDING, DECLINED, SUPERSEDED. */
+  status: string;
+  /** One sentence for the contractor, written by whoever can honour it. */
+  message: string;
 }
 
 /**
- * Move the date. Allowed right up until the goods are on a truck — after that
- * the answer has to be no, because the truck is already rolling and a portal
- * that pretends otherwise sends someone to an empty site.
+ * Ask for a different date. Allowed right up until the goods are on a truck —
+ * after that the answer has to be no, because the truck is already rolling and
+ * a portal that pretends otherwise sends someone to an empty site.
+ *
+ * The guards here are the ones a contractor can reason about from what is on
+ * their own screen: do they have permission, has the supplier got the order,
+ * has it already left, is the date in the past. Everything past that belongs to
+ * the supplier, and this hands it over — `sim` applies the move and re-times
+ * its own scheduler, `gable` files a request and refuses one for a load
+ * already dispatched. Neither branch is written here, which is the point of
+ * `supplier/port.ts`.
+ *
+ * Asynchronous, unlike the stage effects: a contractor pressed a button and is
+ * waiting for a real answer, and that answer can be a refusal with a reason
+ * they need to read.
  */
-export function requestDeliveryReschedule(
+export async function requestDeliveryReschedule(
   orderId: string,
   newDate: IsoDateTime,
-): Result<RescheduleResult> {
+): Promise<Result<RescheduleResult>> {
   const gate = requireCapability('edit-scope');
   if (!gate.ok) return gate;
 
-  /**
-   * `gable` has no reschedule endpoint on its portal API — not on the order,
-   * not on the delivery. Moving the date here would write a promise into
-   * `localStorage` that the dealer's dispatcher never sees, and the next status
-   * sync would quietly overwrite it. Refusing is the honest answer; the missing
-   * endpoint is recorded in ROADMAP §1.
-   */
-  if (getContext().supplier.kind === 'gable') {
+  const { supplier } = getContext();
+  if (supplier.capabilities.reschedule === 'none') {
+    // Kept for a supplier that genuinely has no mechanism. `gable` is no
+    // longer one: it records the ask and a dispatcher decides. Refusing there
+    // would be as wrong as pretending the date had moved.
     return err(
-      'This portal cannot move a delivery date in the supplier’s system — their ERP has no reschedule request. Call the yard and they can move it.',
+      `This portal cannot move a delivery date in ${supplierName()}'s system — their ERP has no way to record the ask. Call the yard and they can move it.`,
     );
   }
 
   const resolved = liveOrder(orderId);
   if (!resolved.ok) return resolved;
-  const { order, salesOrder } = resolved.value;
+  const { salesOrder } = resolved.value;
 
   if (isDispatched(salesOrder.status)) {
     return err(
@@ -159,56 +185,23 @@ export function requestDeliveryReschedule(
   const requested = fromIso(newDate);
   if (Number.isNaN(requested)) return err('Pick a date.');
 
-  const { clock, sim } = getContext();
-  const now = clock.nowIso();
+  const now = getContext().clock.nowIso();
   if (startOfDay(newDate) < startOfDay(now)) {
     return err("Pick a date that hasn't already passed.");
   }
 
-  const noun = salesOrder.fulfillment === 'willcall' ? 'Pickup' : 'Delivery';
-  const updatedSalesOrder: SalesOrder = {
-    ...withEvent(salesOrder, {
-      at: now,
-      status: salesOrder.status,
-      note: `${noun} moved to ${formatDate(newDate)} at your request.`,
-    }),
-    promisedDate: newDate,
-  };
-  salesOrdersStore.set(patch(salesOrdersStore.get(), salesOrder.id, updatedSalesOrder));
+  const outcome = await supplier.requestReschedule(orderId, newDate);
+  if (!outcome.ok) return outcome;
 
-  const updatedOrder: Order = { ...order, requestedDate: newDate, updatedAt: now };
-  ordersStore.set(patch(ordersStore.get(), orderId, updatedOrder));
-
-  // If the goods are already staged, the dispatch moment was fixed when they
-  // were picked. Re-time it, or the new date would be cosmetic and the truck
-  // would leave on the old one.
-  const retimed = sim.scheduler.cancelWhere(
-    (task) => task.type === 'order.dispatch' && task.payload.salesOrderId === salesOrder.id,
-  );
-  if (retimed > 0) {
-    // Same rule the sim uses: never roll before the requested day.
-    const dispatchAt = Math.max(clock.now(), fromIso(startOfDay(newDate)));
-    sim.scheduler.scheduleAt('order.dispatch', dispatchAt, { salesOrderId: salesOrder.id });
-  }
-
-  // A will-call's future is an auto-collect, not a dispatch — and it was timed
-  // off the old pickup date. Without re-timing it, "pickup moved to Friday"
-  // would still get collected and billed on Wednesday.
-  const collectRetimed = sim.scheduler.cancelWhere(
-    (task) => task.type === 'order.deliver' && task.payload.salesOrderId === salesOrder.id,
-  );
-  if (collectRetimed > 0 && salesOrder.fulfillment === 'willcall') {
-    const collectAt = Math.max(clock.now(), fromIso(startOfDay(newDate)) + DAY_MS / 2);
-    sim.scheduler.scheduleAt('order.deliver', collectAt, { salesOrderId: salesOrder.id });
-  }
-
-  log(
-    'order.rescheduled',
-    `${noun} for ${salesOrder.number} moved to ${formatDate(newDate)}`,
-    orderId,
-  );
-
-  return ok({ order: updatedOrder, salesOrder: updatedSalesOrder });
+  return ok({
+    applied: outcome.value.applied,
+    requestedDate: outcome.value.requestedDate,
+    ...(outcome.value.currentScheduledDate
+      ? { currentScheduledDate: outcome.value.currentScheduledDate }
+      : {}),
+    status: outcome.value.status,
+    message: outcome.value.message,
+  });
 }
 
 /**

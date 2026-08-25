@@ -12,8 +12,14 @@ import type { GableCatalogProduct } from '../schema';
  *
  * These tests are that claim checked. The ERP engine satisfies the same
  * `PricingEngine` interface, returns the same `PriceQuote`, and differs only
- * where the ERP genuinely differs — no volume breaks, no tier table, and a
- * price that does not move with quantity.
+ * where the ERP genuinely differs — no tier table on this side, and a price
+ * that does not move with quantity because the catalog endpoint takes none.
+ *
+ * Volume breaks are NOT absent any more; they come from
+ * `GET /catalog/{id}/volume-breaks` and are loaded per product. The engine
+ * without a loader is the unloaded state, and the tests below assert that
+ * state honestly rather than as "there are none" — the loaded behaviour is in
+ * `capabilities.test.ts`.
  */
 
 const LUMBER: GableCatalogProduct = {

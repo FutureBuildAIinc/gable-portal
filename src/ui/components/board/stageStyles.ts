@@ -47,8 +47,12 @@ export function stageBlurb(stage: OrderStage): string {
     plan: live
       ? 'Building the scope. Only you can see this — nothing is sent to the supplier yet.'
       : 'Building the scope. Your pricing is live here.',
+    // The quote column stopped being a private notebook the moment `gable`
+    // grew `POST /quotes`: a scope sent from here lands on the dealer's own
+    // quote desk, a person prices it, and the price comes back. Both modes
+    // now describe a real desk; only the name of who is behind it differs.
     quote: live
-      ? `Waiting on a price. ${supplierName()}'s system has no quote desk this portal can reach — this is your own record until you call them.`
+      ? `With ${supplierName()}'s quote desk. They price it — nothing here is a price until they answer.`
       : `With the ${supplierName()} quote desk for pricing.`,
     order: live
       ? `Placed in ${supplierName()}'s system. Status comes from them.`
@@ -67,7 +71,7 @@ export function stageEmpty(stage: OrderStage): string {
   return {
     plan: 'Nothing being planned. Start an order to build a scope.',
     quote: live
-      ? 'Nothing waiting on a price. Drag a card here to park a scope that still needs a number from your rep.'
+      ? `Nothing at the quote desk. Press and hold a card, then drag it here to send the scope to ${supplierName()} for pricing — including anything they do not stock.`
       : `Nothing at the quote desk. Press and hold a card, then drag it here to have ${supplierName()} price it.`,
     order: live
       ? `No orders placed yet. Press and hold a priced card and drag it here to send it to ${supplierName()}.`

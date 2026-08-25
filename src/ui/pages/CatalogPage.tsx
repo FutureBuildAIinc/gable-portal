@@ -300,10 +300,24 @@ function StockLine({ row }: { row: CatalogRow }) {
       <span className="block text-[11.5px] text-success">In stock · {row.onHand} on hand</span>
     );
   }
+  // Nothing on hand and no published lead time. "Special order — 0 days" is
+  // what this used to say, which reads as "here tomorrow" for an item the
+  // dealer has never put a date on. Say the true thing and let the contractor
+  // ask.
+  if (row.leadTimeDays === undefined) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11.5px] text-warning">
+        <Clock size={11} strokeWidth={2.5} />
+        Special order — {supplierName()} has not published a lead time
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 text-[11.5px] text-warning">
       <Clock size={11} strokeWidth={2.5} />
-      Special order — {row.leadTimeDays} days
+      {row.leadTimeDays === 0
+        ? 'Special order — ships same day'
+        : `Special order — ${row.leadTimeDays} days`}
     </span>
   );
 }

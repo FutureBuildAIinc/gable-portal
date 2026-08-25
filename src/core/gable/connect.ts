@@ -4,6 +4,7 @@ import { getContext, installSupplier } from '../boot';
 import type { Project } from '../domain/project';
 import { type Result, err, ok } from '../lib/result';
 import {
+  catalogStore,
   customerQuotesStore,
   invoicesStore,
   ordersStore,
@@ -13,15 +14,16 @@ import {
   scopeStore,
   sessionStore,
 } from '../stores/root';
-import { collectionFrom, emptyCollection } from '../stores/store';
+import { collectionFrom, emptyCollection, listOf, upsert } from '../stores/store';
 import { type GableClient, createGableClient } from './client';
 import { GableAuthError, describeGableError } from './errors';
+import { adoptOrderHistory, boardCardFrom } from './history';
 import { catalogStateFrom } from './mapper';
-import { createGablePricingEngine } from './pricing';
+import { type GablePricingEngine, createGablePricingEngine } from './pricing';
 import { gableRuntime, isGableWired } from './runtime';
-import type { GableProject } from './schema';
+import type { GableCategoryNode, GableProject } from './schema';
 import { gableStore, setGableState } from './store';
-import { createGableSupplier, syncOrderStatus } from './supplier';
+import { createGableSupplier, syncOrderStatus, syncQuotes } from './supplier';
 
 /**
  * Connecting the portal to a live `gable`, and everything that has to be true
@@ -144,23 +146,43 @@ async function adopt(dealerName: string): Promise<void> {
   const context = getContext();
   const now = context.clock.nowIso();
 
-  const dtos = await api.catalog();
-  const pricing = createGablePricingEngine(dtos);
-  const catalog = catalogStateFrom(dtos, dealerName);
+  /**
+   * The catalog and the category tree land together, because the tree is what
+   * gives a product an aisle. Loading products first and the tree afterwards
+   * would leave one render where every product sits in a synthesised
+   * flat category and the browse chips reshuffle underneath the contractor.
+   *
+   * A tree failure is survivable and does NOT fail the connect: browse falls
+   * back to the flat `category` display string exactly as it did before this
+   * endpoint existed. A catalog failure is not survivable and propagates.
+   */
+  const [dtos, tree] = await Promise.all([
+    api.catalog(),
+    api.categories().catch((): GableCategoryNode[] => []),
+  ]);
+
+  const pricing: GablePricingEngine = createGablePricingEngine(dtos, {
+    // The ladder for a product, fetched when something actually wants to show
+    // one. Injected rather than imported so the engine has no opinion about
+    // where prices come from — and so a standalone build never carries a path
+    // that could reach the network.
+    loadVolumeBreaks: (productId) => api.volumeBreaks(productId),
+  });
+  const catalog = catalogStateFrom(dtos, dealerName, tree);
 
   const projects = await api.projects();
+  const adoptedProjects = projects.map((dto) => projectFrom(dto, now));
 
   /**
    * The seeded demo scenario is dropped, not merged.
    *
    * A board holding both simulated orders and real ones is unreadable and
    * dangerous — two cards side by side, one of which a dealer can see and one
-   * of which exists only in this browser. Projects come from the ERP; orders
-   * start empty and appear as the contractor places them.
-   *
-   * `gable`'s order DTO carries no project association, so the customer's
-   * EXISTING ERP order history has nowhere to land on a project-scoped board
-   * and is deliberately not imported. Recorded in ROADMAP §1.
+   * of which exists only in this browser. Projects come from the ERP, and so
+   * now does the order history: `PortalOrderDTO` carries `project_id`, so an
+   * order the contractor placed at the counter lands on the job the DEALER
+   * filed it against rather than being dropped for want of a home. See
+   * `gable/history.ts`.
    */
   ordersStore.set(emptyCollection());
   scopeStore.set(emptyCollection());
@@ -168,7 +190,7 @@ async function adopt(dealerName: string): Promise<void> {
   salesOrdersStore.set(emptyCollection());
   invoicesStore.set(emptyCollection());
   customerQuotesStore.set(emptyCollection());
-  projectsStore.set(collectionFrom(projects.map((dto) => projectFrom(dto, now))));
+  projectsStore.set(collectionFrom(adoptedProjects));
 
   const supplier = createGableSupplier({
     client: api,
@@ -179,6 +201,27 @@ async function adopt(dealerName: string): Promise<void> {
   // Catalog and pricing land together. Installing the products first would
   // leave one render where ERP products are priced by the simulator's tiers.
   installSupplier({ supplier, pricing, catalog });
+
+  const history = await adoptOrderHistory({
+    client: api,
+    projects: adoptedProjects,
+    products: catalog.products,
+    dealerName,
+    now,
+  });
+  ordersStore.set(collectionFrom(history.orders));
+  scopeStore.set(collectionFrom(history.items));
+  salesOrdersStore.set(collectionFrom(history.salesOrders));
+  setGableState({
+    unassignedOrders: history.unassigned,
+    // The board was just rebuilt from a full read, so any cursor from a
+    // previous session describes a world that no longer exists here. Cleared,
+    // so the first poll is unconditional and cannot 304 past a change that
+    // happened while nobody was connected.
+    feedCursor: null,
+    feedEtag: null,
+    lastPollNotModified: false,
+  });
 
   /**
    * The simulator's scheduler is STOPPED, not paused and not left ticking on a
@@ -317,6 +360,52 @@ function applySession(dealerName: string): void {
   });
 }
 
+/**
+ * File a dealer-side order that belongs to no job onto one of the
+ * contractor's projects.
+ *
+ * This is `PUT /orders/{id}/project`, and it writes on the DEALER's side
+ * first: the association belongs in the ERP, where the dealer's own reporting
+ * and the next `?project_id=` read will see it. Only once `gable` has accepted
+ * it does the card appear on the board — the reverse order would put a card on
+ * a job and then discover the ERP had refused, which is the same class of lie
+ * as a card in Order with no order behind it.
+ */
+export async function fileOrderOnProject(
+  gableOrderId: string,
+  projectId: string,
+): Promise<Result<void>> {
+  const state = gableStore.get();
+  const dto = state.unassignedOrders.find((order) => order.id === gableOrderId);
+  if (!dto) return err('That order is no longer waiting to be filed.');
+
+  const project = projectsStore.get().byId[projectId];
+  if (!project) return err('That project no longer exists.');
+
+  const attached = await getContext().supplier.attachOrderToProject(gableOrderId, projectId);
+  if (!attached.ok) return attached;
+
+  const card = boardCardFrom({
+    dto,
+    projectId,
+    products: catalogStore.get().products,
+    dealerName: state.dealer?.dealer_name ?? 'your supplier',
+    now: getContext().clock.nowIso(),
+    sortOrder: listOf(ordersStore.get()).filter((order) => order.stage === 'order').length,
+  });
+
+  ordersStore.set(upsert(ordersStore.get(), card.order));
+  let scope = scopeStore.get();
+  for (const item of card.items) scope = upsert(scope, item);
+  scopeStore.set(scope);
+  salesOrdersStore.set(upsert(salesOrdersStore.get(), card.salesOrder));
+
+  setGableState({
+    unassignedOrders: state.unassignedOrders.filter((order) => order.id !== gableOrderId),
+  });
+  return ok(undefined);
+}
+
 export async function logoutFromGable(): Promise<void> {
   stopGableSync();
   try {
@@ -329,20 +418,50 @@ export async function logoutFromGable(): Promise<void> {
   setGableState({ status: 'signed-out', user: null, error: null });
 }
 
-/** Read order state back from the ERP. Safe to call while one is in flight. */
+/**
+ * Read supplier state back from the ERP. Safe to call while one is in flight.
+ *
+ * The poll is CONDITIONAL: the ETag and cursor from the previous read go back
+ * out as `If-None-Match` and `?since=`, so an interval that finds nothing
+ * costs one 304 with no body instead of a full order list plus a full delivery
+ * list. `syncOrderStatus` returns the new pair and they are stored for the next
+ * tick — and only when the ERP actually sent them, so a 304 never advances a
+ * cursor past a timestamp nobody published.
+ *
+ * Quotes are polled in the same pass. They are the other thing that moves
+ * without the portal doing anything: a person at the dealer prices a scope, and
+ * without this read the quote column would be a one-way outbox. It is NOT
+ * conditional — `gable` publishes no ETag on `/quotes` — so it is a plain read
+ * and is skipped entirely when this board holds no dealer quote.
+ */
 export async function refreshGableStatus(): Promise<Result<number>> {
   if (gableStore.get().status !== 'connected') return err('Not connected to the supplier.');
   if (gableStore.get().syncing) return ok(0);
 
   setGableState({ syncing: true });
+  const deps = {
+    client: gableClient(),
+    nowIso: () => getContext().clock.nowIso(),
+    dealerName: gableStore.get().dealer?.dealer_name ?? 'your supplier',
+  };
+
   try {
-    const changed = await syncOrderStatus({
-      client: gableClient(),
-      nowIso: () => getContext().clock.nowIso(),
-      dealerName: gableStore.get().dealer?.dealer_name ?? 'your supplier',
+    const state = gableStore.get();
+    const result = await syncOrderStatus({
+      ...deps,
+      cursor: state.feedCursor ?? undefined,
+      etag: state.feedEtag ?? undefined,
     });
-    setGableState({ error: null });
-    return ok(changed);
+
+    setGableState({
+      error: null,
+      feedCursor: result.cursor ?? null,
+      feedEtag: result.etag ?? null,
+      lastPollNotModified: result.notModified,
+    });
+
+    const quotesChanged = await syncQuotes(deps);
+    return ok(result.changed + quotesChanged);
   } catch (error) {
     setGableState({ syncing: false });
     if (!(error instanceof GableAuthError)) {

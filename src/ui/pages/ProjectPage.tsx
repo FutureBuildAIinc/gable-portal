@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
 // SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
 import { getContext } from '@core/boot';
+import { supplierName } from '@core/config/runtime';
 import { ORDER_STAGES, STAGE_LABELS } from '@core/domain/project';
+import { fileOrderOnProject } from '@core/gable/connect';
+import { gableStore } from '@core/gable/store';
 import { formatCents } from '@core/lib/money';
+import { formatDate } from '@core/lib/time';
 import { buildBoardCards, cardsForProject } from '@core/selectors/board';
 import {
   ordersStore,
@@ -13,9 +17,10 @@ import {
 } from '@core/stores/root';
 import { OrderCard } from '@ui/components/board/OrderCard';
 import { STAGE_VAR } from '@ui/components/board/stageStyles';
+import { Button } from '@ui/components/ui/Button';
 import { useStore } from '@ui/hooks/useStore';
 import { ChevronLeft, MapPin } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 /**
  * The drill-down: one project, its orders grouped by the stage each one is in.
@@ -38,7 +43,10 @@ export function ProjectPage({ projectId, onBack, onOpenOrder }: Props) {
   const scope = useStore(scopeStore, (state) => state);
   const quotes = useStore(quotesStore, (state) => state);
   const salesOrders = useStore(salesOrdersStore, (state) => state);
+  const unassigned = useStore(gableStore, (state) => state.unassignedOrders);
   const now = getContext().clock.nowIso();
+  const [filing, setFiling] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const cards = useMemo(
     () =>
@@ -119,6 +127,63 @@ export function ProjectPage({ projectId, onBack, onOpenOrder }: Props) {
             </section>
           );
         })}
+
+        {/*
+          Orders the dealer has for this account that belong to NO job.
+          They arrive from `GET /orders` with a null `project_id` — counter
+          sales and phone orders nobody filed. They are NOT auto-assigned to
+          whatever job happens to be open: which job an order was for is the
+          contractor's knowledge, and guessing it would put another site's
+          materials on this one's cost.
+        */}
+        {unassigned.length > 0 ? (
+          <section>
+            <h3 className="mb-1 text-[12.5px] font-semibold text-text-muted">
+              At {supplierName()}, not on a job yet
+            </h3>
+            <p className="mb-2 text-[12px] text-text-subtle">
+              {unassigned.length} order{unassigned.length === 1 ? '' : 's'} on your account with no
+              job recorded. Filing one here writes it to {supplierName()}'s system too, so their
+              copy and yours agree.
+            </p>
+
+            <ul className="divide-y divide-border rounded-[var(--radius-card)] border border-border bg-surface">
+              {unassigned.map((dto) => (
+                <li key={dto.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium">
+                      GBL-{dto.id.slice(0, 8)}
+                    </span>
+                    <span className="block truncate text-[12px] text-text-muted">
+                      {formatDate(dto.created_at)} · {dto.status} ·{' '}
+                      {formatCents(Math.round(dto.total_amount * 100))}
+                    </span>
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={filing === dto.id}
+                    onClick={() => {
+                      setFiling(dto.id);
+                      void fileOrderOnProject(dto.id, projectId).then((result) => {
+                        setFiling(null);
+                        setNotice(
+                          result.ok
+                            ? `Filed GBL-${dto.id.slice(0, 8)} on ${project.name}.`
+                            : result.error,
+                        );
+                      });
+                    }}
+                  >
+                    {filing === dto.id ? 'Filing…' : 'Add to this job'}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {notice ? <output className="block text-[12.5px] text-text-muted">{notice}</output> : null}
       </div>
     </>
   );

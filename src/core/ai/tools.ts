@@ -189,7 +189,11 @@ export const TOOLS: ToolDef[] = [
           listPrice: formatCents(product.listPrice),
           uom: product.baseUom,
           onHand: totalOnHand(product),
-          leadTimeDays: product.leadTimeDays,
+          // Explicit null, not an omitted key. The model is told "the supplier
+          // has not published one" rather than being handed a field that
+          // silently vanishes — which reads to a language model exactly like
+          // zero, and zero is the one wrong answer here.
+          leadTimeDays: product.leadTimeDays ?? null,
           presentation: product.presentation,
           specs: product.specs,
         })),

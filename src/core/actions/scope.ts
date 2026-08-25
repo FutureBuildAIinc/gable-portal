@@ -91,7 +91,10 @@ export function addCatalogItem(input: AddCatalogItemInput): Result<ScopeItem> {
       sku: product.sku,
       name: product.name,
       ...(product.imageUrl ? { imageUrl: product.imageUrl } : {}),
-      leadTimeDays: product.leadTimeDays,
+      // Copied only when the supplier published one. A product with no lead
+      // time gets a snapshot with no lead time, so the line renders "not
+      // published" instead of inheriting a zero that means "in stock".
+      ...(product.leadTimeDays !== undefined ? { leadTimeDays: product.leadTimeDays } : {}),
     },
     qty: input.qty,
     uom: product.baseUom,

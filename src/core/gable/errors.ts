@@ -41,13 +41,63 @@ export class GableHttpError extends GableError {
   readonly status: number;
   /** The ERP's own `error.message`, when it sent one. Never invented. */
   readonly detail: string | undefined;
+  /**
+   * `error.code` on a refusal — `QUOTE_NOT_PRICED`, `ORDER_ALREADY_CANCELLED`,
+   * `ORDER_NOT_CANCELLABLE`, `ORDER_IN_MOTION`, `DELIVERY_COMMITTED`.
+   *
+   * `gable`'s generic error envelope replaces every message with "Conflict" so
+   * internal detail cannot leak, which is right for a 500 and useless to a
+   * consumer that has to explain a refusal. The 409 envelope therefore carries
+   * a stable machine code and a hand-written customer-safe `reason`, and this
+   * is where both survive the trip. See `backend/internal/portal/errors.go`.
+   */
+  readonly code: string | undefined;
+  /** The dealer's own sentence for a refusal. Shown verbatim; never rewritten. */
+  readonly reason: string | undefined;
 
-  constructor(status: number, message: string, detail?: string) {
+  constructor(
+    status: number,
+    message: string,
+    detail?: string,
+    refusal?: { code?: string | undefined; reason?: string | undefined },
+  ) {
     super(message);
     this.name = 'GableHttpError';
     this.status = status;
     this.detail = detail;
+    this.code = refusal?.code;
+    this.reason = refusal?.reason;
   }
+}
+
+/**
+ * The refusal codes `gable` sends with a 409. A consumer branches on these
+ * rather than on the sentence, because the sentence is dealer-facing copy and
+ * may be reworded; the code is the contract.
+ */
+export type GableRefusalCode =
+  | 'QUOTE_NOT_PRICED'
+  | 'ORDER_ALREADY_CANCELLED'
+  | 'ORDER_NOT_CANCELLABLE'
+  | 'ORDER_IN_MOTION'
+  | 'DELIVERY_COMMITTED';
+
+/** The refusal code on an error, or undefined for anything that is not a 409. */
+export function refusalCodeOf(error: unknown): string | undefined {
+  if (error instanceof GableHttpError && error.status === 409) return error.code;
+  return undefined;
+}
+
+/**
+ * What to tell the contractor when the dealer said no.
+ *
+ * Prefers the dealer's own `reason` — it is written by whoever runs the ERP and
+ * is the sentence a counter salesperson would say — and falls back to the
+ * generic description only when the refusal carried none.
+ */
+export function describeRefusal(error: unknown): string {
+  if (error instanceof GableHttpError && error.reason) return error.reason;
+  return describeGableError(error);
 }
 
 /** The request never got an answer — DNS, TLS, CORS, the proxy being down. */

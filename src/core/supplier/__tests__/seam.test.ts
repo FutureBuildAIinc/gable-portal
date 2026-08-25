@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createOrder, moveOrderToStage } from '../../actions/orders';
 import { addCatalogItem } from '../../actions/scope';
 import { boot, getContext, installSupplier } from '../../boot';
+import { err, ok } from '../../lib/result';
 import { addDays } from '../../lib/time';
 import { catalogStore, ordersStore, projectsStore } from '../../stores/root';
 import { listOf } from '../../stores/store';
@@ -40,11 +41,38 @@ function spyPort(): SupplierPort & { calls: string[] } {
   return {
     calls,
     kind: 'gable',
-    hasQuoteDesk: false,
+    capabilities: {
+      quoteDesk: true,
+      quoteDecisions: true,
+      cancellation: true,
+      projectAssociation: true,
+      reschedule: 'requests',
+      leadTimes: true,
+      volumeBreaks: true,
+      categoryTree: true,
+      changeFeed: true,
+    },
     submitToQuoteDesk: (orderId) => void calls.push(`quote:${orderId}`),
     withdrawFromQuoteDesk: (orderId) => void calls.push(`withdraw:${orderId}`),
     createOrderWithSupplier: (order, from) => void calls.push(`order:${order.id}:${from}`),
-    cancelWithSupplier: (orderId) => void calls.push(`cancel:${orderId}`),
+    cancelWithSupplier: (orderId, from) => void calls.push(`cancel:${orderId}:${from}`),
+    requestReschedule: async (orderId, date) => {
+      calls.push(`reschedule:${orderId}:${date}`);
+      return ok({
+        applied: false,
+        requestedDate: date,
+        status: 'PENDING',
+        message: 'Requested — not confirmed.',
+      });
+    },
+    decideQuote: async (orderId, decision) => {
+      calls.push(`decide:${orderId}:${decision}`);
+      return err('stub');
+    },
+    attachOrderToProject: async (supplierOrderId, projectId) => {
+      calls.push(`attach:${supplierOrderId}:${projectId}`);
+      return ok(undefined);
+    },
   };
 }
 
@@ -53,7 +81,21 @@ describe('boot is standalone and offline', () => {
     boot({ reset: true });
 
     expect(getContext().supplier.kind).toBe('sim');
-    expect(getContext().supplier.hasQuoteDesk).toBe(true);
+    expect(getContext().supplier.capabilities.quoteDesk).toBe(true);
+  });
+
+  it('declares a reschedule it can genuinely apply, and no change feed', () => {
+    boot({ reset: true });
+
+    // The simulator IS the supplier, so a date it moves has moved. Anything
+    // that only records an ask must say `requests` — see `supplier/port.ts`.
+    expect(getContext().supplier.capabilities.reschedule).toBe('applies');
+    // There is no network poll in-process, so there is no conditional read to
+    // claim. Setting this true to make a badge tidy would be the exact class
+    // of claim the capability flags exist to prevent.
+    expect(getContext().supplier.capabilities.changeFeed).toBe(false);
+    // And no accept/decline ceremony: the desk writes prices onto the lines.
+    expect(getContext().supplier.capabilities.quoteDecisions).toBe(false);
   });
 
   it('seeds a catalog without asking anyone', () => {

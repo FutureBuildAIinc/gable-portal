@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
 // SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
+import { acceptSupplierQuote, declineSupplierQuote } from '@core/actions/quotes';
 import {
   addCatalogItem,
   addSpecialItem,
@@ -7,13 +8,20 @@ import {
   updateItemQtyDetailed,
 } from '@core/actions/scope';
 import { getContext } from '@core/boot';
-import { isEnabled } from '@core/config/runtime';
+import { isEnabled, supplierName } from '@core/config/runtime';
 import { STAGE_LABELS } from '@core/domain/project';
 import { hasKnownSubtotal } from '@core/domain/totals';
+import { primeVolumeBreaks } from '@core/gable/pricing';
 import { formatCents } from '@core/lib/money';
 import { formatDate } from '@core/lib/time';
 import { buildOrderDetail } from '@core/selectors/order';
-import { catalogStore, ordersStore, projectsStore, scopeStore } from '@core/stores/root';
+import {
+  catalogStore,
+  ordersStore,
+  projectsStore,
+  quotesStore,
+  scopeStore,
+} from '@core/stores/root';
 import { listOf } from '@core/stores/store';
 import { STAGE_VAR } from '@ui/components/board/stageStyles';
 import { AddItemsSheet } from '@ui/components/order/AddItemsSheet';
@@ -23,7 +31,7 @@ import { Sheet } from '@ui/components/ui/Sheet';
 import { useStore } from '@ui/hooks/useStore';
 import { cn } from '@ui/lib/cn';
 import { ChevronLeft, FileText, Lock, Plus, Store, Trash2, Truck } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface Props {
   orderId: string;
@@ -38,6 +46,7 @@ export function OrderPage({ orderId, onBack, onOpenProject, onOpenQuote, onOpenT
   const projects = useStore(projectsStore, (state) => state);
   const scope = useStore(scopeStore, (state) => state);
   const products = useStore(catalogStore, (state) => state.products);
+  const quotes = useStore(quotesStore, (state) => state);
 
   const [addOpen, setAddOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -45,8 +54,28 @@ export function OrderPage({ orderId, onBack, onOpenProject, onOpenQuote, onOpenT
   /** Attached to the toast when the last action is reversible. */
   const [undo, setUndo] = useState<(() => void) | null>(null);
 
-  const { clock, pricing } = getContext();
+  /**
+   * Bumped once the supplier's volume-break ladders have landed.
+   *
+   * The pricing engine caches ladders internally and is the same object
+   * before and after, so nothing else in the dependency list changes when a
+   * ladder arrives. Without this the "+20 more and the price drops" prompt
+   * would appear only on the next unrelated re-render.
+   */
+  const [breakEpoch, setBreakEpoch] = useState(0);
+  /** True while an accept/decline is in flight, so the pair cannot double-fire. */
+  const [deciding, setDeciding] = useState(false);
 
+  const { clock, pricing, supplier } = getContext();
+
+  /*
+   * `breakEpoch` below is a real dependency that a syntactic check cannot see:
+   * `pricing.quote` reads a volume-break cache INSIDE the engine, so the same
+   * engine object answers differently once a ladder has loaded. Without it the
+   * "+20 more and the price drops" prompt would wait for an unrelated
+   * re-render.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: breakEpoch invalidates an internal cache
   const detail = useMemo(() => {
     const order = orders.byId[orderId];
     if (!order) return null;
@@ -65,7 +94,35 @@ export function OrderPage({ orderId, onBack, onOpenProject, onOpenQuote, onOpenT
         }),
       now: clock.nowIso(),
     });
-  }, [orderId, orders, projects, scope, products, pricing, clock]);
+  }, [orderId, orders, projects, scope, products, pricing, clock, breakEpoch]);
+
+  /**
+   * Load the quantity ladders for the products actually ON this order.
+   *
+   * Bounded on purpose. `gable` publishes volume breaks per product
+   * (`GET /catalog/{id}/volume-breaks`), not on the catalog list, so this is
+   * one request per line rather than one per SKU in the dealer's catalog — and
+   * the order workspace is where the "buy more, pay less" decision is actually
+   * made. A no-op standalone, where the engine already holds the rules.
+   */
+  const lineProducts = useMemo(
+    () =>
+      listOf(scope)
+        .filter((item) => item.orderId === orderId && item.productId)
+        .map((item) => ({ id: String(item.productId), sku: item.snapshot.sku })),
+    [scope, orderId],
+  );
+
+  useEffect(() => {
+    if (lineProducts.length === 0) return;
+    let cancelled = false;
+    void primeVolumeBreaks(pricing, lineProducts).then(() => {
+      if (!cancelled) setBreakEpoch((epoch) => epoch + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pricing, lineProducts]);
 
   function flashUndoable(message: string, action: () => void) {
     setToast(message);
@@ -95,6 +152,35 @@ export function OrderPage({ orderId, onBack, onOpenProject, onOpenQuote, onOpenT
 
   const { order, project, lines, totals, editable, lockedReason } = detail;
   const selected = lines.find((line) => line.item.id === detailId);
+  const supplierQuote = order.quoteId ? quotes.byId[order.quoteId] : undefined;
+  /**
+   * Whether this supplier has an accept/decline step at all.
+   *
+   * False on the simulator, whose desk writes prices straight onto the lines
+   * and has no SENT state to answer. Hiding the buttons there is the honest
+   * move: offering them and then refusing every press would teach a ceremony
+   * that does not exist.
+   */
+  const canDecide = supplier.capabilities.quoteDecisions;
+
+  async function handleQuoteDecision(decision: 'accept' | 'decline') {
+    setDeciding(true);
+    const result =
+      decision === 'accept'
+        ? await acceptSupplierQuote(orderId)
+        : await declineSupplierQuote(orderId);
+    setDeciding(false);
+    // The refusal is the dealer's own sentence — `QUOTE_NOT_PRICED` carries a
+    // reason a counter salesperson would say out loud, and it is shown
+    // verbatim rather than flattened into "Conflict".
+    flash(
+      result.ok
+        ? decision === 'accept'
+          ? `Accepted ${result.value.number}. Move this to Order when you are ready.`
+          : `Declined ${result.value.number}.`
+        : result.error,
+    );
+  }
 
   /**
    * The ONE way a line leaves an order.
@@ -232,6 +318,58 @@ export function OrderPage({ orderId, onBack, onOpenProject, onOpenQuote, onOpenT
           <Lock size={13} strokeWidth={2} />
           {lockedReason}
         </p>
+      ) : null}
+
+      {/* The dealer's answer to a scope this portal actually sent.
+          Shown only when a supplier quote EXISTS on their side —
+          `supplierRef` is the honest test for that, and a quote without one
+          never left this browser. */}
+      {supplierQuote?.supplierRef ? (
+        <section className="border-b border-border bg-surface px-4 py-3 lg:px-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold">
+                {supplierQuote.number} at {supplierName()}
+              </p>
+              <p className="mt-0.5 text-[12px] text-text-muted">
+                {supplierQuote.deskNote ??
+                  `${supplierName()} has this scope. They price it; nothing here is a price yet.`}
+              </p>
+            </div>
+            {/* The dealer's own word, not the portal's rounding of it. A
+                contractor phoning the yard hears the same vocabulary. */}
+            <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted">
+              {supplierQuote.supplierState ?? supplierQuote.status}
+            </span>
+          </div>
+
+          {canDecide && supplierQuote.status === 'priced' ? (
+            <div className="mt-2.5 flex gap-2">
+              <Button
+                size="sm"
+                disabled={deciding}
+                onClick={() => void handleQuoteDecision('accept')}
+              >
+                Accept this price
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={deciding}
+                onClick={() => void handleQuoteDecision('decline')}
+              >
+                Decline
+              </Button>
+            </div>
+          ) : null}
+
+          {canDecide && supplierQuote.status === 'priced' ? (
+            <p className="mt-2 text-[11.5px] text-text-subtle">
+              Accepting closes the quote at {supplierName()} and puts their prices on your lines. It
+              does not place the order — move the card to Order when you are ready.
+            </p>
+          ) : null}
+        </section>
       ) : null}
 
       <ul className="pb-32">
@@ -378,7 +516,14 @@ function ItemDetail({ line }: { line: ReturnType<typeof buildOrderDetail>['lines
           {item.unitPrice !== undefined ? formatCents(line.extended) : '—'}
         </Row>
         <Row label="Availability">
-          {line.leadTimeDays === 0 ? 'In stock' : `${line.leadTimeDays} day lead time`}
+          {/* Three answers, and the third one is not "In stock". An unpublished
+              lead time is unknown, and rendering unknown as zero told a
+              contractor the material was on the shelf. */}
+          {line.leadTimeDays === undefined
+            ? `${supplierName()} has not published a lead time`
+            : line.leadTimeDays === 0
+              ? 'In stock'
+              : `${line.leadTimeDays} day lead time`}
         </Row>
       </dl>
 

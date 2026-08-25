@@ -28,6 +28,32 @@ export interface Quote {
   deskNote?: string;
   /** Prices the desk put on lines the ERP couldn't price. */
   linePrices: { scopeItemId: EntityId; unitPrice: Cents; leadTimeDays: number }[];
+
+  /**
+   * The SUPPLIER's own id for this quote, when a real one exists.
+   *
+   * Absent for a simulator quote — the sim's desk is in-process and its quote
+   * has no other identity. Present on the wired path, and it is what
+   * accept/decline and the price read-back address; without it the portal
+   * would have to match a dealer's quote by number, which is a display string.
+   *
+   * Its presence is also the honest test for "did this actually reach a
+   * dealer": a quote with no `supplierRef` was never sent anywhere.
+   */
+  supplierRef?: string;
+
+  /**
+   * The supplier's own state word for the quote — `gable`'s portal vocabulary
+   * (REQUESTED / PRICED / ACCEPTED / DECLINED / EXPIRED), carried verbatim.
+   *
+   * The five-value `QuoteStatus` above is the portal's own flow and is coarser:
+   * ACCEPTED and PRICED both land on `priced` because the portal has no
+   * accepted state. Keeping the raw word means a contractor comparing the
+   * screen with a phone call to the yard hears the same vocabulary, and a
+   * consumer can de-duplicate on what the dealer SAID rather than on what the
+   * portal rounded it to.
+   */
+  supplierState?: string;
 }
 
 export type SalesOrderStatus =

@@ -79,7 +79,12 @@ export function moveOrderToStage(orderId: string, to: OrderStage): Result<MoveOr
         supplier.createOrderWithSupplier(updated, decision.value.from);
         break;
       case 'cancel-sales-order':
-        supplier.cancelWithSupplier(orderId);
+        // `from` for the same reason `create-sales-order` takes it: a real ERP
+        // can refuse a cancellation — a fulfilled order, an already-cancelled
+        // one, goods on a dispatched route — and the card has to go back to
+        // Order rather than sit in Plan as an order the contractor believes
+        // they killed.
+        supplier.cancelWithSupplier(orderId, decision.value.from);
         break;
     }
   }

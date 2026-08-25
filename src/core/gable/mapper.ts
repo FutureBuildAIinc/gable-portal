@@ -1,12 +1,26 @@
 // SPDX-License-Identifier: LicenseRef-OpenLBM-Community-Source-1.0
 // SPDX-FileCopyrightText: 2026 FutureBuild, Inc. and OpenLBM contributors
-import type { Brand, Category, Location, PriceQuote, Product, Uom } from '../domain/catalog';
+import type {
+  Brand,
+  Category,
+  Location,
+  PriceQuote,
+  Product,
+  Uom,
+  VolumeBreak,
+} from '../domain/catalog';
 import type { SalesOrder, SalesOrderStatus, TrackingEvent } from '../domain/supplier';
 import type { EntityId } from '../lib/ids';
 import { type Cents, toCents } from '../lib/money';
 import type { IsoDateTime } from '../lib/time';
 import type { CatalogState } from '../stores/root';
-import type { GableCatalogProduct, GableDelivery, GableOrder } from './schema';
+import type {
+  GableCatalogProduct,
+  GableCategoryNode,
+  GableDelivery,
+  GableOrder,
+  GableVolumeBreak,
+} from './schema';
 
 /**
  * The one file where `gable`'s vocabulary becomes the portal's.
@@ -15,9 +29,11 @@ import type { GableCatalogProduct, GableDelivery, GableOrder } from './schema';
  * cents), naming (snake_case -> camelCase) and, in two places, meaning. The
  * meaning changes are the ones worth reading:
  *
- *  - `gable` has no lead-time field on a catalog product, and no volume breaks
- *    on the portal catalog endpoint. Those are not defaulted to a plausible
- *    number; they are absent, and the UI has to render absence.
+ *  - **Lead time is nullable and the null is load-bearing.** `gable` sends
+ *    `lead_time_days: null` when the dealer has not published one and `0` when
+ *    the product ships today. This file keeps them apart: null becomes an
+ *    ABSENT `leadTimeDays`, and the portal's lead-time-vs-delivery-date
+ *    warnings stay silent on absence rather than computing against a guess.
  *  - `gable`'s order status vocabulary (DRAFT/CONFIRMED/FULFILLED/CANCELLED/
  *    ON_HOLD) is coarser than the portal's eight-state supplier flow. Mapping
  *    is lossy in one direction only — see `salesOrderStatusFrom`.
@@ -40,6 +56,32 @@ export function categoryIdFor(name: string): EntityId {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
   return `${CATEGORY_PREFIX}${slug || 'uncategorised'}`;
+}
+
+/**
+ * A node of the ERP's real category tree, keyed by its own id rather than by
+ * its display name.
+ *
+ * Two categories in a dealer's tree can legitimately share a name under
+ * different parents ("Accessories" under Decking and under Roofing), and
+ * `categoryIdFor` would collapse them into one aisle. The tree has ids, so it
+ * uses them; `categoryIdFor` remains only for products the ERP left
+ * unlinked, where a name is genuinely all there is.
+ */
+export function categoryIdForNode(gableCategoryId: string): EntityId {
+  return `${CATEGORY_PREFIX}${gableCategoryId}`;
+}
+
+/**
+ * The portal's category id for a product: its tree link when the ERP linked
+ * it, and the slugged display name when it did not.
+ *
+ * Both branches must agree with what `catalogStateFrom` puts in the category
+ * list, or a product lands in an aisle that does not exist and disappears from
+ * browse without any signal that it is missing.
+ */
+export function categoryIdForProduct(dto: GableCatalogProduct): EntityId {
+  return dto.category_id ? categoryIdForNode(dto.category_id) : categoryIdFor(dto.category);
 }
 
 /**
@@ -92,7 +134,7 @@ export function productFrom(dto: GableCatalogProduct): Product {
     // The ERP's catalog carries no description. An empty string is honest; a
     // generated sentence would read as product copy the dealer never wrote.
     description: '',
-    categoryId: categoryIdFor(dto.category),
+    categoryId: categoryIdForProduct(dto),
     brandId: GABLE_BRAND_ID,
     ...(dto.image_url ? { imageUrl: dto.image_url } : {}),
     baseUom: uomFrom(dto.uom),
@@ -102,13 +144,15 @@ export function productFrom(dto: GableCatalogProduct): Product {
     relatedSkus: [],
     specs,
     /**
-     * `gable`'s portal catalog exposes availability but NOT a lead time, so
-     * every ERP-sourced product is 0 — "we are not telling you a wait". The
-     * portal's lead-time-vs-delivery-date warnings therefore go quiet on the
-     * wired path. That is a gap in the ERP contract, recorded in ROADMAP §1,
-     * not something to paper over with an invented number of days.
+     * The dealer's published lead time, or nothing at all.
+     *
+     * `lead_time_days: 0` means "ships today" and is kept as 0. `null` means
+     * the dealer has not published one and is kept ABSENT — not folded into 0,
+     * which would publish "available today" for every product a dealer has
+     * never entered a lead time for, and not replaced with a plausible guess,
+     * which is worse still because a crew gets booked around it.
      */
-    leadTimeDays: 0,
+    ...(typeof dto.lead_time_days === 'number' ? { leadTimeDays: dto.lead_time_days } : {}),
     stock: [{ locationId: GABLE_LOCATION_ID, onHand: dto.available, onOrder: 0 }],
     /**
      * `presentation` decides whether a product earns a narrative on a customer
@@ -121,24 +165,62 @@ export function productFrom(dto: GableCatalogProduct): Product {
 }
 
 /**
- * The whole catalog store, derived from one `GET /catalog` response.
+ * The ERP's category forest, flattened into the portal's parent-pointer shape.
  *
- * Categories are synthesised from the distinct category names the ERP returned,
- * flat and parentless. `gable` has no category tree on the portal surface, and
- * fabricating a hierarchy would give the browse UI a shape the dealer never
- * configured.
+ * `selectors/catalog.ts` walks `parentId` to cascade a browse selection down a
+ * subtree, so the tree arrives as a flat list with parents rather than as
+ * nested nodes. `gable` already guards against cycles and orphans when it
+ * builds the forest, so this is a straight walk.
+ */
+export function categoriesFromTree(nodes: readonly GableCategoryNode[]): Category[] {
+  const out: Category[] = [];
+
+  const walk = (node: GableCategoryNode, parentId: EntityId | undefined): void => {
+    out.push({
+      id: categoryIdForNode(node.id),
+      name: node.name,
+      slug: node.slug,
+      ...(parentId ? { parentId } : {}),
+    });
+    for (const child of node.children ?? []) walk(child, categoryIdForNode(node.id));
+  };
+
+  for (const node of nodes) walk(node, undefined);
+  return out;
+}
+
+/**
+ * The whole catalog store, derived from `GET /catalog` and `GET
+ * /catalog/categories`.
+ *
+ * The tree is the dealer's own `product_categories` hierarchy, so browse
+ * cascades exactly the way `?category_id=` would on the server: clicking
+ * "Lumber" shows the studs filed under Framing Lumber two levels down.
+ *
+ * A product the ERP has NOT linked to the tree still has to be browsable, so
+ * its flat `category` display string is synthesised into a parentless aisle
+ * exactly as before. Those synthesised aisles are appended AFTER the real
+ * ones, and only when a product actually needs them — an empty invented
+ * category would be a shape the dealer never configured.
  */
 export function catalogStateFrom(
   dtos: readonly GableCatalogProduct[],
   dealerName: string,
+  tree: readonly GableCategoryNode[] = [],
 ): CatalogState {
   const categories = new Map<EntityId, Category>();
+  for (const category of categoriesFromTree(tree)) categories.set(category.id, category);
+
   for (const dto of dtos) {
+    // Linked to the real tree: nothing to synthesise. If the id is somehow not
+    // in the tree — an inactive category the catalog still points at — fall
+    // through and give it an aisle, or its products vanish from browse.
+    if (dto.category_id && categories.has(categoryIdForNode(dto.category_id))) continue;
+
+    const id = categoryIdForProduct(dto);
+    if (categories.has(id)) continue;
     const name = dto.category.trim() || 'Uncategorised';
-    const id = categoryIdFor(name);
-    if (!categories.has(id)) {
-      categories.set(id, { id, name, slug: id.slice(CATEGORY_PREFIX.length) });
-    }
+    categories.set(id, { id, name, slug: id.slice(CATEGORY_PREFIX.length) });
   }
 
   const brand: Brand = {
@@ -157,21 +239,57 @@ export function catalogStateFrom(
   };
 }
 
+/** One rung of the ERP's ladder, in the portal's units. */
+export function volumeBreakFrom(dto: GableVolumeBreak): VolumeBreak {
+  return { minQty: dto.min_quantity, unitPrice: toCents(dto.unit_price) };
+}
+
+/**
+ * The next rung above `qty` that is genuinely cheaper per unit.
+ *
+ * Both conditions matter. A rung at or below the current quantity is not an
+ * opportunity — it is already being applied. A rung that is not cheaper is not
+ * one either, and `gable` can legitimately return one: the ladder is projected
+ * from the real waterfall, and a contract price can beat a volume rule at
+ * every quantity. Showing "buy 40 more to pay the same" is worse than showing
+ * nothing.
+ */
+export function nextBreakAbove(
+  breaks: readonly VolumeBreak[],
+  qty: number,
+  unitPrice: Cents,
+): VolumeBreak | undefined {
+  return [...breaks]
+    .sort((a, b) => a.minQty - b.minQty)
+    .find((rung) => rung.minQty > qty && rung.unitPrice < unitPrice);
+}
+
 /**
  * The contractor's price, straight from the ERP's own waterfall.
  *
  * This is the swap `sim/pricing.ts` was written anticipating: same `PriceQuote`
  * out, no tier table, no discount rules, no contract SKUs on this side of the
- * counter. `nextBreak` is absent because `gable`'s portal catalog does not
- * publish volume breaks — the field is optional precisely so a source without
- * them stays honest instead of showing a break that does not exist.
+ * counter.
+ *
+ * `breaks` is the ladder `gable` computed for THIS customer, and it is passed
+ * in rather than read here because it arrives from a different endpoint
+ * (`GET /catalog/{id}/volume-breaks`) than the price. Omit it and `nextBreak`
+ * stays absent — the field is optional precisely so a caller that has not
+ * loaded a ladder shows nothing rather than a break that does not exist.
  */
-export function priceQuoteFrom(dto: GableCatalogProduct, qty: number): PriceQuote {
+export function priceQuoteFrom(
+  dto: GableCatalogProduct,
+  qty: number,
+  breaks?: readonly VolumeBreak[],
+): PriceQuote {
+  const unitPrice = toCents(dto.customer_price);
+  const next = breaks ? nextBreakAbove(breaks, qty, unitPrice) : undefined;
   return {
     sku: dto.sku,
-    unitPrice: toCents(dto.customer_price),
+    unitPrice,
     listPrice: toCents(dto.base_price),
     qty,
+    ...(next ? { nextBreak: next } : {}),
   };
 }
 

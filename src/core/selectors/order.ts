@@ -17,13 +17,32 @@ import { daysBetween } from '../lib/time';
  * adding over a retail site.
  */
 
+/**
+ * What a special-order line is assumed to take when nothing says otherwise.
+ *
+ * A special order is categorically not an in-stock item, so the alternative to
+ * an assumption here is 0, and 0 tells a contractor it can be on site
+ * tomorrow. This is the one place in the read model where a number is assumed
+ * rather than read, and it is confined to lines the dealer has not priced yet;
+ * the moment a quote desk answers, the real number replaces it.
+ */
+export const ASSUMED_SPECIAL_LEAD_DAYS = 21;
+
 export interface ScopeLine {
   item: ScopeItem;
   product?: Product;
   extended: Cents;
-  /** True when this line alone cannot arrive by the order's requested date. */
+  /**
+   * True when this line alone cannot arrive by the order's requested date.
+   *
+   * FALSE when the lead time is unknown. That is not optimism — it is the
+   * refusal to compute a warning from a number nobody published. A "this will
+   * be late" banner derived from an assumed zero is worse than no banner,
+   * because a contractor acts on it.
+   */
   lateForDate: boolean;
-  leadTimeDays: number;
+  /** Undefined when the supplier has published none. Not zero. */
+  leadTimeDays: number | undefined;
   /** Present when buying more would lower the unit price. */
   breakOpportunity?: BreakOpportunity;
 }
@@ -120,7 +139,23 @@ export function buildOrderDetail(input: BuildOrderDetailInput): OrderDetail {
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((item) => {
       const product = item.productId ? productById.get(item.productId) : undefined;
-      const leadTimeDays = item.snapshot.leadTimeDays ?? (item.kind === 'special' ? 21 : 0);
+      /**
+       * Three cases, and the third one is new.
+       *
+       *   - the snapshot has a lead time -> use it, including 0 ("in stock")
+       *   - a SPECIAL line with none -> three weeks, because a special order is
+       *     categorically not an in-stock item and saying 0 would promise
+       *     tomorrow
+       *   - a CATALOG line with none -> UNDEFINED
+       *
+       * That last case used to fall through to 0, which read as "in stock".
+       * `gable` sends `lead_time_days: null` for a product whose dealer has not
+       * published one, so on the wired path that default was asserting same-day
+       * availability for goods nobody had dated.
+       */
+      const leadTimeDays =
+        item.snapshot.leadTimeDays ??
+        (item.kind === 'special' ? ASSUMED_SPECIAL_LEAD_DAYS : undefined);
       const quote = product ? input.quoteFor(product, item.qty) : undefined;
 
       const opportunity = breakOpportunityFor(item, quote);
@@ -129,7 +164,11 @@ export function buildOrderDetail(input: BuildOrderDetailInput): OrderDetail {
         item,
         ...(product ? { product } : {}),
         extended: itemExtended(item),
-        lateForDate: daysToDate !== null && daysToDate >= 0 && leadTimeDays > daysToDate,
+        lateForDate:
+          leadTimeDays !== undefined &&
+          daysToDate !== null &&
+          daysToDate >= 0 &&
+          leadTimeDays > daysToDate,
         leadTimeDays,
         ...(opportunity ? { breakOpportunity: opportunity } : {}),
       };

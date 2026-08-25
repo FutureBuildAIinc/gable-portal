@@ -92,10 +92,24 @@ describe('money crosses the boundary as integer cents', () => {
 });
 
 describe('product mapping invents nothing', () => {
-  it('reports no lead time, because the ERP publishes none', () => {
-    // `gable`'s catalog has no lead-time column. Guessing "7 days" would put a
-    // crew on site for a delivery nobody promised.
-    expect(productFrom(LUMBER).leadTimeDays).toBe(0);
+  it('keeps an unpublished lead time ABSENT rather than folding it into zero', () => {
+    // `gable` sends `lead_time_days: null` when the dealer has not published
+    // one. Zero means "ships today" and is a completely different promise; a
+    // crew gets booked around the difference.
+    expect(productFrom({ ...LUMBER, lead_time_days: null }).leadTimeDays).toBeUndefined();
+  });
+
+  it('keeps a published zero as zero — "ships today" is a real answer', () => {
+    expect(productFrom({ ...LUMBER, lead_time_days: 0 }).leadTimeDays).toBe(0);
+  });
+
+  it('carries a real lead time through unchanged', () => {
+    expect(productFrom({ ...LUMBER, lead_time_days: 14 }).leadTimeDays).toBe(14);
+  });
+
+  it('treats an older gable that omits the field entirely as unpublished', () => {
+    // The key is absent, not null. Same meaning: nobody has said.
+    expect(productFrom(LUMBER).leadTimeDays).toBeUndefined();
   });
 
   it('leaves the description empty rather than generating product copy', () => {

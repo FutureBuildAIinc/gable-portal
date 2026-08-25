@@ -119,7 +119,7 @@ export function buildScenario(ctx: Ctx): ScenarioData {
         sku: product.sku,
         name: product.name,
         ...(product.imageUrl ? { imageUrl: product.imageUrl } : {}),
-        leadTimeDays: product.leadTimeDays,
+        ...(product.leadTimeDays !== undefined ? { leadTimeDays: product.leadTimeDays } : {}),
       },
       qty,
       uom: product.baseUom,
