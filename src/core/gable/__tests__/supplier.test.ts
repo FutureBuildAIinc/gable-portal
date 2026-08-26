@@ -16,7 +16,7 @@ import {
 } from '../../stores/root';
 import { emptyCollection, listOf } from '../../stores/store';
 import type { GableClient } from '../client';
-import { GableHttpError } from '../errors';
+import { GableHttpError, GableNetworkError } from '../errors';
 import { catalogStateFrom } from '../mapper';
 import { createGablePricingEngine } from '../pricing';
 import type { GableCatalogProduct, GableOrder } from '../schema';
@@ -302,6 +302,129 @@ describe('a refused order does not leave a card claiming otherwise', () => {
     expect(order?.salesOrderId).toBeUndefined();
     expect(salesOrdersStore.get().byId[pendingSalesOrderIdFor(orderId)]).toBeUndefined();
     expect(activityStore.get().entries.some((entry) => entry.kind === 'order.rejected')).toBe(true);
+  });
+
+  /**
+   * The other side of that rule, and the one it used to get wrong.
+   *
+   * `POST /checkout` is the commit. Once it answers with an `order_id` the
+   * order EXISTS at the dealer — the follow-up `GET /orders/{id}` is only a
+   * read, and `gable` restarts on deploy, so a 5xx on that read is an ordinary
+   * Tuesday. Treating it as a refusal walked the card back to Plan, dropped the
+   * ERP id, and told the contractor "Kelly-Fradet did not accept this order"
+   * while the yard was picking it. The only recovery on offer was to drag it to
+   * Order again, which places it a SECOND time.
+   */
+  it('keeps a placed order when only the confirming read fails', async () => {
+    const stub = stubClient({
+      order: vi.fn(() =>
+        Promise.reject(
+          new GableHttpError(500, 'The supplier refused GET /orders/{id} (HTTP 500).'),
+        ),
+      ) as GableClient['order'],
+    });
+    wire(stub.client);
+    const orderId = plannedOrder();
+
+    moveOrderToStage(orderId, 'order');
+    await vi.waitFor(() => expect(stub.calls).toContain('checkout'));
+    await vi.waitFor(() =>
+      expect(ordersStore.get().byId[orderId]?.salesOrderId).toBe(`gso_${PLACED_ORDER.id}`),
+    );
+
+    const order = ordersStore.get().byId[orderId];
+    // The card stays where the contractor put it: the order is real.
+    expect(order?.stage).toBe('order');
+    // A REAL ERP id, not the pending placeholder — this is what stops the next
+    // poll minting a second card for the same order.
+    expect(salesOrdersStore.get().byId[pendingSalesOrderIdFor(orderId)]).toBeUndefined();
+    const salesOrder = salesOrdersStore.get().byId[`gso_${PLACED_ORDER.id}`];
+    expect(salesOrder?.status).toBe('submitted');
+    expect(salesOrder?.number).toBe('GBL-aa11bb22');
+    // And it must not be reported as a refusal.
+    expect(activityStore.get().entries.some((entry) => entry.kind === 'order.rejected')).toBe(
+      false,
+    );
+    expect(salesOrder?.tracking[0]?.note).toContain('Placed with Kelly-Fradet');
+  });
+
+  it('lets the next status poll fill in an order whose confirming read failed', async () => {
+    const stub = stubClient({
+      order: vi.fn(() =>
+        Promise.reject(
+          new GableHttpError(500, 'The supplier refused GET /orders/{id} (HTTP 500).'),
+        ),
+      ) as GableClient['order'],
+    });
+    wire(stub.client);
+    const orderId = plannedOrder();
+
+    moveOrderToStage(orderId, 'order');
+    await vi.waitFor(() =>
+      expect(ordersStore.get().byId[orderId]?.salesOrderId).toBe(`gso_${PLACED_ORDER.id}`),
+    );
+
+    await syncOrderStatus({
+      client: stub.client,
+      nowIso: () => getContext().clock.nowIso(),
+      dealerName: 'Kelly-Fradet',
+    });
+
+    // ONE card, patched — not a second one alongside it.
+    expect(listOf(salesOrdersStore.get())).toHaveLength(1);
+    expect(salesOrdersStore.get().byId[`gso_${PLACED_ORDER.id}`]?.status).toBe('confirmed');
+    expect(ordersStore.get().byId[orderId]?.stage).toBe('order');
+  });
+
+  /**
+   * PIN, not a passing guard. `it.fails` asserts the CURRENT behaviour is
+   * wrong: when somebody fixes this, this line starts failing and forces the
+   * conversation.
+   *
+   * The case the fix above cannot reach. `POST /checkout` is not idempotent and
+   * carries no client key, so a request that TIMES OUT is genuinely ambiguous:
+   * the order may never have been created, or it may have been created and the
+   * response lost. The portal resolves that ambiguity as "refused" — the card
+   * walks back to Plan and the contractor is told the dealer did not accept it.
+   *
+   * Half the time that is a lie, and the recovery the UI offers (drag it to
+   * Order again) places the order a second time. On a framing package that is
+   * two truckloads of lumber and two invoices.
+   *
+   * Why this is a pin: the correct fix is cross-repo and is a product decision.
+   *
+   *  1. `gable` accepts an idempotency key on `POST /checkout` and returns the
+   *     same order for a repeat. Correct, and it needs an endpoint change.
+   *  2. The portal reconciles on timeout — `GET /orders` filtered to the last
+   *     few minutes, matched against this order's lines — and adopts a match.
+   *     Heuristic, and a wrong match files someone else's order on this job.
+   *  3. The card goes to a third state ("we don't know — check with your
+   *     supplier") that is neither placed nor refused, and refuses to resubmit
+   *     until somebody looks. Honest, safe, and a new UI state.
+   *
+   * (1) is the real answer and is not this repository's to make.
+   */
+  it.fails('KNOWN BUG: a checkout that TIMES OUT is reported as a refusal', async () => {
+    const stub = stubClient({
+      checkout: vi.fn(() =>
+        Promise.reject(
+          new GableNetworkError('The supplier did not answer POST /checkout in time.'),
+        ),
+      ) as GableClient['checkout'],
+    });
+    wire(stub.client);
+    const orderId = plannedOrder();
+
+    moveOrderToStage(orderId, 'order');
+    await vi.waitFor(() => expect(activityStore.get().entries.length).toBeGreaterThan(0));
+
+    // A timeout is not a refusal. The order may well be sitting in the dealer's
+    // ERP, so the card must not walk back to Plan — where the only thing the
+    // contractor can do is place it again.
+    expect(ordersStore.get().byId[orderId]?.stage).toBe('order');
+    expect(activityStore.get().entries.some((entry) => entry.kind === 'order.rejected')).toBe(
+      false,
+    );
   });
 
   it('refuses a special-order line before touching the ERP at all', () => {

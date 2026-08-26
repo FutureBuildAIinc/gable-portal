@@ -230,6 +230,52 @@ export function createGableSupplier(deps: GableSupplierDeps): SupplierPort {
     setGableState({ status: 'error', error: reason });
   }
 
+  /**
+   * Record an order `gable` accepted but would not describe.
+   *
+   * `POST /checkout` returned an id, so the order is real and the dealer can
+   * see it; only the follow-up `GET /orders/{id}` failed. The card therefore
+   * stays in Order and keeps a REAL sales-order id (`gso_<erp id>`, the same id
+   * `salesOrderIdFor` mints), so the next status poll patches this card instead
+   * of creating a second one — and so a contractor is never invited to place
+   * the same order twice.
+   *
+   * What it does NOT do is guess. The status is `submitted`, which is the one
+   * thing known to be true; the number is derived from the id the same way
+   * `salesOrderFrom` derives it; and the subtotal is the portal's own line
+   * total, clearly a local figure until the dealer's own numbers are read back.
+   * The tracking note and the activity entry both say plainly that the order
+   * was placed and its details could not be read.
+   */
+  function adoptUnreadOrder(
+    order: Order,
+    gableOrderId: string,
+    items: readonly ScopeItem[],
+    reason: string,
+  ): void {
+    const at = nowIso();
+    const note = `Placed with ${dealerName}, but their system did not return the order details: ${reason} The order stands — this card will fill in on the next status check.`;
+
+    salesOrdersStore.set(remove(salesOrdersStore.get(), pendingSalesOrderIdFor(order.id)));
+    const salesOrder: SalesOrder = {
+      id: salesOrderIdFor(gableOrderId),
+      orderId: order.id,
+      number: `GBL-${gableOrderId.slice(0, 8)}`,
+      status: 'submitted',
+      fulfillment: order.fulfillment,
+      submittedAt: at,
+      subtotal: items.reduce((sum, item) => sum + (item.unitPrice ?? 0) * item.qty, 0),
+      tracking: [{ at, status: 'submitted', note }],
+    };
+    salesOrdersStore.set(upsert(salesOrdersStore.get(), salesOrder));
+    ordersStore.set(patch(ordersStore.get(), order.id, { salesOrderId: salesOrder.id }));
+
+    log({ actor: 'system', kind: 'order.submitted', message: note, orderId: order.id }, at);
+    // `error`, not `connected`: the last call did fail and the connection sheet
+    // should say so. The order is still on the board because it is still real.
+    setGableState({ status: 'error', error: reason, lastSyncAt: at });
+  }
+
   async function submit(order: Order, items: readonly ScopeItem[]): Promise<void> {
     /**
      * The ERP cart is per-customer and persistent — it survives a reload, a
@@ -265,7 +311,26 @@ export function createGableSupplier(deps: GableSupplierDeps): SupplierPort {
       project_id: order.projectId,
     });
 
-    const placed = await client.order(checkout.order_id);
+    /**
+     * The order EXISTS from this line on.
+     *
+     * Everything above can fail and mean "the dealer did not take it": the
+     * cart calls, the checkout itself. Everything below is a READ of an order
+     * `gable` has already created and committed. Letting a failed read fall
+     * through to the caller's `rollback` told a contractor their order was
+     * refused while the yard was picking it, cleared the ERP id the status
+     * poll needs to find the card again, and left the only recovery a
+     * resubmit — which places the order a SECOND time. A read failure is not a
+     * refusal, so it is caught here rather than thrown to a handler that can
+     * only conclude one thing.
+     */
+    let placed: Awaited<ReturnType<GableClient['order']>>;
+    try {
+      placed = await client.order(checkout.order_id);
+    } catch (error) {
+      adoptUnreadOrder(order, checkout.order_id, items, describeRefusal(error));
+      return;
+    }
     const at = nowIso();
 
     salesOrdersStore.set(remove(salesOrdersStore.get(), pendingSalesOrderIdFor(order.id)));

@@ -299,13 +299,36 @@ export function boot(options: BootOptions = {}): AppContext {
   // Exactly one tab runs the simulator; the rest adopt its writes. Without
   // this, the flagship two-window flow ran two schedulers over one queue and
   // fired every piece of supplier work twice.
+  const watchForLease = () => {
+    if (leaderTimer !== undefined) clearInterval(leaderTimer);
+    leaderTimer = setInterval(startIfLeader, 3_000);
+  };
+
+  /**
+   * Stand down after losing the lease.
+   *
+   * A background tab's timers are throttled to roughly once a minute, so its
+   * 2.5s heartbeat can miss the 7s TTL entirely and a foreground tab takes
+   * over — correctly. What must not happen is this tab carrying on as if it
+   * were still leader: `renewLeadership` refuses to steal the lease back, and
+   * this stops the second scheduler that would otherwise be pumping the same
+   * persisted queue. It then goes back to watching, so it can take over for
+   * real if the new leader closes.
+   */
+  const standDown = () => {
+    isLeader = false;
+    context?.sim.scheduler.stop();
+    watchForLease();
+  };
+
   const startIfLeader = () => {
     if (!tabId || !context || isLeader) return;
     if (!tryAcquireLeadership(tabId)) return;
     isLeader = true;
     if (leaderTimer !== undefined) clearInterval(leaderTimer);
     leaderTimer = setInterval(() => {
-      if (tabId) renewLeadership(tabId);
+      if (!tabId) return;
+      if (!renewLeadership(tabId)) standDown();
     }, 2_500);
     persistClock();
     // Catches up on everything that came due while the tab was closed, then ticks.
@@ -314,7 +337,7 @@ export function boot(options: BootOptions = {}): AppContext {
   startIfLeader();
   if (!isLeader) {
     // Not the leader: poll for a lapsed lease (the leader tab closed or died).
-    leaderTimer = setInterval(startIfLeader, 3_000);
+    watchForLease();
   }
 
   return context;

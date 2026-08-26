@@ -335,27 +335,53 @@ function readLease(): LeaderLease | null {
   }
 }
 
+/** True when the lease is absent, expired, or already this tab's. */
+function leaseIsAvailableTo(tabId: string): boolean {
+  const lease = readLease();
+  if (lease === null) return true;
+  if (lease.tabId === tabId) return true;
+  return Date.now() - lease.ts >= LEASE_TTL_MS;
+}
+
 /** True when this tab now holds (or already held) the lease. */
 export function tryAcquireLeadership(tabId: string): boolean {
   if (!storageAvailable()) return true; // no storage, no second tab to race
-  const lease = readLease();
-  const fresh = lease !== null && Date.now() - lease.ts < LEASE_TTL_MS;
-  if (fresh && lease.tabId !== tabId) return false;
+  if (!leaseIsAvailableTo(tabId)) return false;
   try {
     localStorage.setItem(LEADER_KEY, JSON.stringify({ tabId, ts: Date.now() }));
   } catch {
     return true; // storage broken: behave as a lone tab
   }
-  return true;
+  // Re-read rather than assume. localStorage has no compare-and-set, so two
+  // tabs booting in the same instant can both see a free lease; whoever wrote
+  // last is the one the lease actually names, and the other must stand down.
+  return readLease()?.tabId === tabId;
 }
 
-export function renewLeadership(tabId: string): void {
-  if (!storageAvailable()) return;
+/**
+ * Renew this tab's lease. Returns false when the lease is no longer ours, and
+ * does NOT take it back.
+ *
+ * That refusal is the whole point. The heartbeat renews every 2.5s against a
+ * 7s TTL, which is ample — until the browser throttles a BACKGROUND tab's
+ * timers to roughly once a minute. The lease then lapses, a foreground tab
+ * correctly takes over, and the sleeping tab's throttled interval finally
+ * fires. An unconditional write at that moment stole the lease straight back
+ * while the new leader carried on believing it held it, so BOTH tabs pumped the
+ * simulator over one persisted queue — the exact "every piece of supplier work
+ * fired twice" failure the lease was introduced to stop, reached by the most
+ * ordinary user action there is: leaving a tab open in the background.
+ */
+export function renewLeadership(tabId: string): boolean {
+  if (!storageAvailable()) return true;
+  if (!leaseIsAvailableTo(tabId)) return false;
   try {
     localStorage.setItem(LEADER_KEY, JSON.stringify({ tabId, ts: Date.now() }));
   } catch {
     // Ignore; staleness will be judged from the last successful renewal.
+    return true;
   }
+  return readLease()?.tabId === tabId;
 }
 
 export function releaseLeadership(tabId: string): void {
