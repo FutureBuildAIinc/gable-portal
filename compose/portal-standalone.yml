@@ -1,0 +1,100 @@
+# The sandbox smoke target.
+#
+# This is the cheapest thing in the ecosystem that can prove the preview
+# substrate works, which is why it goes first: one container, no database, no
+# seed, no registry, no CI change. With GABLE_API_URL unset the portal runs
+# against its own simulator (server/serve.ts logs "running standalone against
+# the simulator"), so there is nothing to provision and nothing to wait for.
+#
+#   docker compose -p gp-smoke -f compose/portal-standalone.yml up -d --build
+#   curl -fsS http://localhost:8080/healthz
+#   docker compose -p gp-smoke -f compose/portal-standalone.yml down -v
+#
+# The project name is the preview identity. Every preview is `-p gp-<slug>`,
+# which is what makes the router rule, the container labels and the teardown
+# all derive from one string instead of three that can disagree.
+#
+# What this file is proving is NOT that the portal works — it already does.
+# It is proving wildcard DNS and TLS, dynamic routing with no Traefik reload,
+# the shared-domain cookie, the auth edge, and destruction. Success on the
+# droplet is: the page loads, AND the only reason you got in is that you were
+# already logged into community.gablelbm.com.
+
+services:
+  portal:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: gable-portal:sandbox
+
+    # Published locally so the smoke loop works on a laptop with no Traefik.
+    # On the droplet Traefik reaches the container over the shared network and
+    # this mapping is harmless — but note it is a direct, UNAUTHENTICATED path
+    # to the preview, so the droplet's firewall must not expose 8080. The
+    # router is the auth edge; a published port is a way around it.
+    ports:
+      - "${SANDBOX_LOCAL_PORT:-8080}:8080"
+
+    environment:
+      # Unset on purpose. Absent GABLE_API_URL is what selects standalone mode;
+      # setting it to an empty string is NOT the same thing and would try to
+      # proxy to nowhere.
+      # GABLE_API_URL: ""
+
+      # The admin console is off in a preview. It holds a write-only ERP API
+      # key, and a preview is the least trustworthy place in the system to put
+      # one — this is member-authored code running on a shared box.
+      GABLENOW_ADMIN_ALLOW_REMOTE: "false"
+
+      # Previews are served over TLS at *.sandbox.gablelbm.com, so cookies stay
+      # secure. This exists only for the local loop over plain http, and it is
+      # deliberately not defaulted to true: a preview that quietly accepted
+      # insecure cookies would be a preview whose auth behaviour differs from
+      # production, which defeats the point of previewing.
+      GABLE_ALLOW_INSECURE_COOKIES: "${GABLE_ALLOW_INSECURE_COOKIES:-false}"
+
+    # Docker reads this from the image's HEALTHCHECK, but naming it here means
+    # `depends_on: service_healthy` works for anything composed alongside a
+    # preview later, and the sandbox controller can wait on a real signal
+    # rather than sleeping.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+
+    restart: unless-stopped
+
+    # LIST form, not a mapping, and this is not cosmetic. Compose interpolates
+    # label VALUES but NOT mapping KEYS: written as `traefik.http.routers.
+    # ${SLUG}.rule: ...` the key stays literal, every preview emits a router
+    # named `${SLUG}`, and Traefik keeps one of them. Two members previewing at
+    # once would be served each other's branch. Found by bringing this up and
+    # reading the labels back off the container rather than trusting the file.
+    #
+    # In list form the whole `key=value` string is a value, so the slug reaches
+    # the router name.
+    labels:
+      # Traefik discovers previews by label, so bringing one up needs no
+      # reload and no config file — that is the property being proved.
+      - "traefik.enable=true"
+      - "traefik.http.routers.${SANDBOX_SLUG:?set SANDBOX_SLUG — it is the preview identity and a wrong one serves the wrong branch}.rule=Host(`${SANDBOX_SLUG}.sandbox.gablelbm.com`)"
+      - "traefik.http.routers.${SANDBOX_SLUG}.entrypoints=websecure"
+      - "traefik.http.routers.${SANDBOX_SLUG}.tls.certresolver=cloudflare"
+      - "traefik.http.services.${SANDBOX_SLUG}.loadbalancer.server.port=8080"
+      # Forward-auth is the whole test. Without it a preview is a public URL
+      # serving a member's unreviewed code.
+      - "traefik.http.routers.${SANDBOX_SLUG}.middlewares=portal-forward-auth@file"
+
+      # Swept by label, so an orphaned preview is findable without a database:
+      #   docker ps --filter label=gable.preview
+      - "gable.preview=true"
+      - "gable.preview.slug=${SANDBOX_SLUG}"
+
+networks:
+  default:
+    # On the droplet Traefik and every preview share one external network, so
+    # the router can reach a container it did not start. Locally that network
+    # does not exist, hence the override below rather than a hard `external`.
+    name: "${SANDBOX_NETWORK:-gp-smoke_default}"
