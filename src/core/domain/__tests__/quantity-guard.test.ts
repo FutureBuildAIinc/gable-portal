@@ -54,8 +54,24 @@ describe('a quantity below one is refused, not multiplied', () => {
     expect(() =>
       computeQuoteTotals({
         lines: [
-          { id: 'a', scopeItemId: 's1', name: 'Studs', qty: 100, uom: 'EA', unitCost: 500, presentation: 'commodity' },
-          { id: 'b', scopeItemId: 's2', name: 'Entry door', qty: -3, uom: 'EA', unitCost: 180_000, presentation: 'selection' },
+          {
+            id: 'a',
+            scopeItemId: 's1',
+            name: 'Studs',
+            qty: 100,
+            uom: 'EA',
+            unitCost: 500,
+            presentation: 'commodity',
+          },
+          {
+            id: 'b',
+            scopeItemId: 's2',
+            name: 'Entry door',
+            qty: -3,
+            uom: 'EA',
+            unitCost: 180_000,
+            presentation: 'selection',
+          },
         ],
         markupPercent: 22,
         laborLines: [],
