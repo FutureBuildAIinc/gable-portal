@@ -3,6 +3,7 @@
 import { addCatalogItem, addSpecialItem, applyTemplate } from '@core/actions/scope';
 import { supplierName } from '@core/config/runtime';
 import { seedTemplates } from '@core/data/template-seed';
+import { isSellableQty } from '@core/domain/customer-quote';
 import { formatCents } from '@core/lib/money';
 import { searchProducts } from '@core/selectors/order';
 import { catalogStore } from '@core/stores/root';
@@ -220,10 +221,20 @@ function SpecialOrderForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
+        // `Number(qty) || 1` used to sit here, and it read as a guard while
+        // being the opposite of one: it only rescued NaN and the empty string,
+        // so "-3" was truthy and went straight through to the order — and out
+        // the far side into `lineExtended`, where a negative quantity is a
+        // negative extended price and the quote prices against the yard.
+        const wanted = Number(qty.trim());
+        if (!isSellableQty(wanted)) {
+          onDone('Enter a quantity of 1 or more before adding this item.');
+          return;
+        }
         const result = addSpecialItem({
           orderId,
           description,
-          qty: Number(qty) || 1,
+          qty: wanted,
         });
         onDone(result.ok ? `Added "${description}" for dealer pricing` : result.error);
       }}
@@ -250,7 +261,13 @@ function SpecialOrderForm({
         <input
           value={qty}
           onChange={(event) => setQty(event.target.value)}
+          type="number"
           inputMode="numeric"
+          // The browser's own floor, so a phone keypad offers no minus sign and
+          // the spinner will not walk below one. It is the courtesy, not the
+          // control — `min` is trivially bypassed and the submit above is what
+          // actually refuses.
+          min={1}
           className="min-h-11 w-28 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-brand"
         />
       </label>

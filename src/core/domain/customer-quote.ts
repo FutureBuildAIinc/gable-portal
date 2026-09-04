@@ -140,8 +140,41 @@ export function laborTotal(line: LaborLine): Cents {
   return line.rateType === 'flat' ? line.rate : multiplyCents(line.rate, line.hours ?? 0);
 }
 
-/** One material line's extension. */
+/**
+ * Is this a quantity a line can actually be sold at?
+ *
+ * ABOVE ZERO AND FINITE, and deliberately NOT "a whole number": lumber is sold
+ * by the foot and 7.5 of something is an ordinary line — `computeQuoteTotals`
+ * has a proof about exactly that. The rule is only that there is no such thing
+ * as selling minus three studs, or none of them.
+ *
+ * Exported because the Quantity box and this module have to ask the same
+ * question. Two spellings of "is it positive?" is how one of them ends up
+ * accepting `-0`, `Infinity` or `NaN`.
+ */
+export function isSellableQty(qty: number): boolean {
+  return Number.isFinite(qty) && qty > 0;
+}
+
+/**
+ * One material line's extension.
+ *
+ * IT REFUSES A QUANTITY BELOW ONE rather than multiplying it. A negative
+ * quantity does not produce a small number here, it produces a NEGATIVE
+ * extended price — and `computeQuoteTotals` sums those, so one line of minus
+ * three pays the customer out of the contractor's pocket and prices the quote
+ * against the yard. That number is wrong in a way nobody reading a proposal
+ * would question, which is exactly the kind of quiet wrongness this codebase
+ * refuses to render. Throwing is the point: there is no sensible extended
+ * price for a line that should never have been saved, and a clamp to zero
+ * would put a free door on a signed proposal instead.
+ */
 export function lineExtended(line: Pick<CustomerQuoteLine, 'unitCost' | 'qty'>): Cents {
+  if (!isSellableQty(line.qty)) {
+    throw new RangeError(
+      `A quote line cannot be priced at a quantity of ${line.qty}. Quantity must be more than zero.`,
+    );
+  }
   return multiplyCents(line.unitCost, line.qty);
 }
 
