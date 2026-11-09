@@ -65,7 +65,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^4.1.10",
     "axe-core": "^4.12.1",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "jsdom": "^29.1.1",
     "playwright": "^1.62.1",
     "tailwindcss": "^4.0.0",
